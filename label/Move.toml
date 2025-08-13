@@ -11,8 +11,8 @@ use_case = "0xf"
 
 [dependencies]
 AptosFramework = { git = "https://github.com/aptos-labs/aptos-framework.git", subdir = "aptos-framework", rev = "mainnet" }
-caas_framework = { local = "../CaasFramework" }
+caas_framework = { local = "../caas-framework" }
 
 [dev-dependencies]
 AptosFramework = { git = "https://github.com/aptos-labs/aptos-framework.git", subdir = "aptos-framework", rev = "mainnet" }
-caas_framework = { local = "../CaasFramework" }
+caas_framework = { local = "../caas-framework" }
