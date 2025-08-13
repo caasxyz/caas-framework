@@ -4,13 +4,15 @@ version = "1.0.0"
 authors = []
 
 [addresses]
+use_case = "_"
 
 [dev-addresses]
-caas-indentity = { local = '../identity' }
+use_case = "0xf"
 
-[dependencies.AptosFramework]
-git = "https://github.com/aptos-labs/aptos-framework.git"
-rev = "mainnet"
-subdir = "aptos-framework"
+[dependencies]
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-framework.git", subdir = "aptos-framework", rev = "mainnet" }
+caas_framework = { local = "../CaasFramework" }
 
 [dev-dependencies]
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-framework.git", subdir = "aptos-framework", rev = "mainnet" }
+caas_framework = { local = "../CaasFramework" }

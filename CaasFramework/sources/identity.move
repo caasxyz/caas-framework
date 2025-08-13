@@ -1,16 +1,18 @@
-module caas::identity_verification {
+module caas_framework::identity {
     use std::type_info::{Self, TypeInfo};
-    use aptos_framework::table::{Self, Table};
-    use std::hash;
+    use aptos_framework::smart_table::{Self, SmartTable};
+    use std::signer;
     use std::vector;
     use std::string::{String};
+    use aptos_framework::event;
+    use aptos_framework::timestamp;
 
     /// Identity Registry
     struct IdentityRegistry has key {
         /// TypeInfo -> IdentityInfo
-        registered_identities: Table<TypeInfo, IdentityInfo>,
+        registered_identities: SmartTable<TypeInfo, IdentityInfo>,
         /// Project address -> TypeInfo list
-        project_types: Table<address, vector<TypeInfo>>
+        project_types: SmartTable<address, vector<TypeInfo>>
     }
 
     /// Identity Information
@@ -21,15 +23,32 @@ module caas::identity_verification {
         api_key: String
     }
 
+    #[event]
+    struct WitnessDropEvent<phantom T> has copy, drop, store {
+        api_key: String
+    }
+
     /// Error codes
     const E_NOT_ADMIN: u64 = 1;
     const E_NOT_REGISTERED: u64 = 2;
-    const E_IDENTITY_DISABLED: u64 = 3;
-    const E_INVALID_API_KEY: u64 = 4;
+    const E_REGISTERED: u64 = 3;
+    const E_IDENTITY_DISABLED: u64 = 4;
+    const E_INVALID_API_KEY: u64 = 5;
+
+    fun init_module(sender: &signer) {
+        move_to(
+            sender,
+            IdentityRegistry {
+                registered_identities: smart_table::new<TypeInfo, IdentityInfo>(),
+                project_types: smart_table::new<address, vector<TypeInfo>>()
+            }
+        )
+    }
 
     /// Register project identity (admin only)
     /// Note: T does not require any ability constraints, only type info is fetched
-    public fun register_identity<T>(admin: &signer, api_key: String) acquires IdentityRegistry {
+    public fun register_identity<T: drop>(admin: &signer, api_key: String) acquires IdentityRegistry {
+        // TODO: admin account management
         assert!(signer::address_of(admin) == @caas_admin, E_NOT_ADMIN);
 
         let type_info = type_info::type_of<T>();
@@ -43,34 +62,38 @@ module caas::identity_verification {
         };
 
         // Update registry
-        let registry = borrow_global_mut<IdentityRegistry>(@caas);
-        table::add(&mut registry.registered_identities, type_info, identity_info);
+        let registry = borrow_global_mut<IdentityRegistry>(@caas_framework);
+        assert!(!registry.registered_identities.contains(type_info), E_REGISTERED);
+        smart_table::add(&mut registry.registered_identities, type_info, identity_info);
+
 
         // Update project type mapping
-        if (!table::contains(&registry.project_types, project_addr)) {
-            table::add(&mut registry.project_types, project_addr, vector::empty());
+        if (!smart_table::contains(&registry.project_types, project_addr)) {
+            smart_table::add(&mut registry.project_types, project_addr, vector::empty());
         };
-        let types = table::borrow_mut(&mut registry.project_types, project_addr);
+        let types = smart_table::borrow_mut(&mut registry.project_types, project_addr);
         vector::push_back(types, type_info);
+
+        event::emit(WitnessDropEvent<T>{api_key});
     }
 
     /// Verify project identity
-    /// Note: This function only verifies identity, does not consume witness
+    /// Note: This function verifies identity, then drop witness
     public fun verify_identity<T: drop>(witness: T): (bool, address) acquires IdentityRegistry {
         // Get type info of witness (includes its defining address)
         let type_info = type_info::type_of<T>();
         // type_info includes: address, module name, struct name
         // e.g.: 0x123::identity::ProjectIdentity
 
-        let registry = borrow_global<IdentityRegistry>(@caas);
+        let registry = borrow_global<IdentityRegistry>(@caas_framework);
 
         // Check if this type is registered
         assert!(
-            table::contains(&registry.registered_identities, type_info),
+            smart_table::contains(&registry.registered_identities, type_info),
             E_NOT_REGISTERED
         );
 
-        let identity_info = table::borrow(&registry.registered_identities, type_info);
+        let identity_info = smart_table::borrow(&registry.registered_identities, type_info);
         assert!(identity_info.is_active, E_IDENTITY_DISABLED);
 
         // Return project address
@@ -82,10 +105,10 @@ module caas::identity_verification {
         assert!(signer::address_of(admin) == @caas_admin, E_NOT_ADMIN);
 
         let type_info = type_info::type_of<T>();
-        let registry = borrow_global_mut<IdentityRegistry>(@caas);
+        let registry = borrow_global_mut<IdentityRegistry>(@caas_framework);
 
         let identity_info =
-            table::borrow_mut(&mut registry.registered_identities, type_info);
+            smart_table::borrow_mut(&mut registry.registered_identities, type_info);
         identity_info.is_active = enabled;
     }
 }

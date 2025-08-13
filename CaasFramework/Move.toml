@@ -1,11 +1,15 @@
 [package]
-name = "caas-identity"
+name = "caas_framework"
 version = "1.0.0"
 authors = []
 
 [addresses]
+caas_framework = "_"
+caas_admin = "_"
 
 [dev-addresses]
+caas_framework = "0xd"
+caas_admin = "0xe"
 
 [dependencies.AptosFramework]
 git = "https://github.com/aptos-labs/aptos-framework.git"
