@@ -17,20 +17,27 @@ module use_case::label {
     }
 
     #[event]
+    struct CreateLabelSpaceEvent has copy, drop, store {
+        project_address: address,
+        namespace: Object<NamespaceCore>
+    }
+
+    #[event]
     struct AddLabelEnumEvent has copy, drop, store {
-        admin: address,
+        project_address: address,
+        namespace: Object<NamespaceCore>,
         label: String
     }
 
     #[event]
-    struct AddUserLabelEvent has copy, drop, store {
-        user: address,
+    struct SetLabelEvent has copy, drop, store {
+        key: address,
         label: String
     }
 
     #[event]
-    struct RemoveUserLabelEvent has copy, drop, store {
-        user: address,
+    struct RemoveLabelEvent has copy, drop, store {
+        key: address,
         label: String
     }
 
@@ -40,25 +47,35 @@ module use_case::label {
     const EADDRESS_NEVER_BEEN_LABELED: u64 = 4;
     const EADDRESS_NOT_LABELED: u64 = 5;
 
-    public fun create_label<T: drop>(namespace: Object<NamespaceCore>, witness: T) {
+    public fun create<T: drop>(namespace: Object<NamespaceCore>, witness: T) {
+        let witness_type_info = type_info::type_of<T>();
+        let type_info_address = type_info::account_address(&witness_type_info);
         let new_label = Label {
             enums: smart_vector::new<String>(),
             labels: smart_table::new<address, SmartVector<String>>(),
         };
 
         namespace::patch_data<T, Label>(namespace, new_label, witness);
+
+        event::emit(CreateLabelSpaceEvent{
+            project_address: type_info_address,
+            namespace
+        });
     }
 
 //  Users must ensure the security of witness transmission (only pass witness to caas services, caas services ensure it's consumed and discarded)
     public fun add_enums<T: drop>(namespace: Object<NamespaceCore>, new_enum: String, witness: T) {
+        let witness_type_info = type_info::type_of<T>();
+        let type_info_address = type_info::account_address(&witness_type_info);
         let (label_record, voucher) = namespace::get_data_by_witness<T, Label>(namespace, witness);
         assert!(!label_record.enums.contains(&new_enum), ELABEL_ENUM_ALREADY_CONTAINS);
         label_record.enums.push_back(new_enum);
         namespace::return_data(label_record, voucher);
-        // event::emit(AddLabelEnumEvent{
-        //     project_address,
-        //     label: new_enum
-        // })
+        event::emit(AddLabelEnumEvent{
+            project_address: type_info_address,
+            namespace,
+            label: new_enum
+        })
     }
 
     public fun set_label<T: drop>(namespace: Object<NamespaceCore>, address_to_label: address, label: String, witness: T) {
@@ -72,10 +89,10 @@ module use_case::label {
         assert!(!address_labels.contains(&label), EADDRESS_ALREADY_LABELED);
         address_labels.push_back(label);
         namespace::return_data(label_record, voucher);
-        // event::emit(AddAddressLabelEvent{
-        //     address_labeled: address_to_label,
-        //     label
-        // });
+        event::emit(SetLabelEvent{
+            key: address_to_label,
+            label
+        });
     }
 
     public fun remove_label<T: drop>(namespace: Object<NamespaceCore>, address_to_remove_label: address, label: String, witness: T) {
@@ -88,10 +105,10 @@ module use_case::label {
         let (_found, index) = address_labels.index_of(&label); 
         address_labels.remove(index);
         namespace::return_data(label_record, voucher);
-        // event::emit(RemoveAddressLabelEvent{
-        //     address_labeled: address_to_label,
-        //     label
-        // });
+        event::emit(RemoveLabelEvent{
+            key: address_to_remove_label,
+            label
+        });
     }
 
     fun get_labels_by_witness<T: drop>(namespace: Object<NamespaceCore>, witness: T): (Label, Voucher<Label>) {
