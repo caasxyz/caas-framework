@@ -109,26 +109,26 @@ module caas_framework::authorization {
 
     public fun grant_read_authorization<T: drop>(
         witness: T,
-        authorizer_address: address, // 授权方地址
-        project_object_address: address, // 项目对象地址
-        authorized_address: address, // 被授权方地址
-        duration_seconds: u64 // 0 表示永久授权
+        authorizer_address: address, // Authorizer address
+        project_object_address: address, // Project object address
+        authorized_address: address, // Authorized party address
+        duration_seconds: u64 // 0 means permanent authorization
     ) acquires AuthorizationRegistry {
         let (pass, witness_project_address) = identity::verify_identity(witness);
         assert!(pass, ENOT_VALID_WITNESS);
         assert!(
             authorizer_address == witness_project_address, EWITNESS_NOT_MATCH_PROJECT
         );
-        // 验证不能自己授权给自己
+        // Verify cannot authorize self
         assert!(authorizer_address != authorized_address, E_CANNOT_AUTHORIZE_SELF);
 
-        // 创建项目信息
+        // Create project information
         let authorization_key = AuthorizationKey {
             authorized_object_address: project_object_address,
             authorizer_object_address: authorizer_address
         };
 
-        // 创建授权信息
+        // Create authorization information
         let auth_info = AuthorizationInfo {
             project: authorizer_address,
             authorized: authorized_address,
@@ -138,10 +138,10 @@ module caas_framework::authorization {
             } else { 0 },
             is_active: true,
             read: true,
-            write: false // 写权限暂时不启用
+            write: false // Write permission temporarily disabled
         };
 
-        // 更新注册表
+        // Update registry
 
         let registry = borrow_global_mut<AuthorizationRegistry>(@caas_framework);
 
@@ -149,7 +149,7 @@ module caas_framework::authorization {
             !registry.authorizations.contains(authorization_key), EALREADY_AUTHORIZED
         );
 
-        // 使用被授权方地址作为 key
+        // Use authorized party address as key
         add_authorizations(&mut registry.authorizations, authorization_key, auth_info);
 
         add_info(
@@ -186,7 +186,7 @@ module caas_framework::authorization {
         }
     }
 
-    /// 撤销授权（授权方可调用）
+    /// Revoke authorization (callable by authorizer)
     public fun revoke_authorization<T: drop>(
         witness: T, authorized_address: address
     ) acquires AuthorizationRegistry {
@@ -200,7 +200,7 @@ module caas_framework::authorization {
             authorizer_object_address: witness_project_address
         };
 
-        // 检查授权是否存在
+        // Check if authorization exists
         assert!(
             smart_table::contains(&registry.authorizations, authorization_key),
             E_AUTHORIZATION_NOT_FOUND
@@ -208,7 +208,7 @@ module caas_framework::authorization {
 
         let auth_info = smart_table::borrow(&registry.authorizations, authorization_key);
 
-        // 移除授权
+        // Remove authorization
         let auth_info =
             smart_table::remove(&mut registry.authorizations, authorization_key);
 
@@ -222,7 +222,7 @@ module caas_framework::authorization {
             auth_info
         );
 
-        // 发出撤销事件
+        // Emit revocation event
         event::emit(
             AuthorizationRevokedEvent {
                 authorizer: witness_project_address,
@@ -244,14 +244,14 @@ module caas_framework::authorization {
         };
     }
 
-    /// 管理员禁用/启用授权
+    /// Admin disable/enable authorization
     public fun toggle_authorization(
         caas_admin: &signer,
         authorizer: address,
         authorized_address: address,
         is_active: bool
     ) acquires AuthorizationRegistry {
-        // 验证调用者是 CaaS 管理员
+        // Verify caller is CaaS admin
         assert!(signer::address_of(caas_admin) == @caas_admin, E_NOT_ADMIN);
 
         let registry = borrow_global_mut<AuthorizationRegistry>(@caas_framework);
@@ -261,7 +261,7 @@ module caas_framework::authorization {
             authorizer_object_address: authorizer 
         };
 
-        // 检查授权是否存在
+        // Check if authorization exists
         assert!(
             smart_table::contains(&registry.authorizations, authorization_key),
             E_AUTHORIZATION_NOT_FOUND
@@ -301,7 +301,7 @@ module caas_framework::authorization {
 
     }
 
-    /// 验证项目 B 是否有权读取项目 A 的数据
+    /// Verify if project B has permission to read project A's data
     public fun verify_read_authorization<T: drop>(
         witness: T, authorizer_address: address
     ): bool acquires AuthorizationRegistry {
@@ -313,33 +313,33 @@ module caas_framework::authorization {
             authorizer_object_address: authorizer_address
         };
 
-        // 使用被授权方地址查找授权信息
+        // Use authorized party address to find authorization info
         if (!smart_table::contains(&registry.authorizations, authorization_key)) {
             return false
         };
 
         let auth_info = smart_table::borrow(&registry.authorizations, authorization_key);
 
-        // 验证所有项目信息是否匹配
+        // Verify all project information matches
         if (auth_info.project != authorizer_address) {
             return false
         };
 
-        // 检查是否启用
+        // Check if enabled
         if (!auth_info.is_active) {
             return false
         };
 
-        // 检查是否过期
+        // Check if expired
         if (auth_info.expires_at > 0 && timestamp::now_seconds() > auth_info.expires_at) {
             return false
         };
 
-        // 检查读权限
+        // Check read permission
         auth_info.read
     }
 
-    /// 通过项目对象地址验证授权
+    /// Verify authorization through project object address
     public fun verify_read_authorization_by_project(
         authorized_address: address, project_object_address: address
     ): bool acquires AuthorizationRegistry {
@@ -349,43 +349,43 @@ module caas_framework::authorization {
             authorized_object_address: authorized_address,
             authorizer_object_address: project_object_address
         };
-        // 使用被授权方地址查找授权信息
+        // Use authorized party address to find authorization info
         if (!smart_table::contains(&registry.authorizations, authorization_key)) {
             return false
         };
 
         let auth_info = smart_table::borrow(&registry.authorizations, authorization_key);
 
-        // 检查是否启用
+        // Check if enabled
         if (!auth_info.is_active) {
             return false
         };
 
-        // 检查是否过期
+        // Check if expired
         if (auth_info.expires_at > 0 && timestamp::now_seconds() > auth_info.expires_at) {
             return false
         };
 
-        // 检查读权限
+        // Check read permission
         auth_info.read
     }
 
-    /// 使用授权读取数据
+    /// Use authorization to read data
     public fun use_authorization<T: drop>(
-        authorizer_address: address, // 授权方地址
-        witness: T // 被授权方的身份凭证
+        authorizer_address: address, // Authorizer address
+        witness: T // Authorized party's identity credential
     ): bool acquires AuthorizationRegistry {
-        // 验证被授权方身份
+        // Verify authorized party identity
         let (pass, witness_project_address) =
             identity::verify_identity(witness);
 
-        // 验证授权（现在需要完整的项目信息）
+        // Verify authorization (now requires complete project information)
         assert!(
             verify_read_authorization(witness_project_address, authorizer_address),
             E_UNAUTHORIZED
         );
 
-        // 发出事件
+        // Emit event
         event::emit(
             AuthorizationUsedEvent {
                 authorized: witness_project_address,

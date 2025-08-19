@@ -166,7 +166,7 @@ module caas_framework::namespace {
         witness: T
     ) acquires NamespaceCore {
         let _project_address = verify_witness_return_project_address(witness);
-        // 可以使用 Data 类型做准入判断（只允许特定记个类型的数据写在 namespace 下）
+        // Can use Data type for access control (only allow specific data types to be written under namespace)
         let core_data = borrow_global_mut<NamespaceCore>(object::object_address(&namespace));
         let obj_signer = object::generate_signer_for_extending(&core_data.extend_ref);
         move_to(&obj_signer, Container{

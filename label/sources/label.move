@@ -49,7 +49,7 @@ module use_case::label {
         namespace::patch_data<T, Label>(namespace, new_label, witness);
     }
 
-//  用户自己确保 witnesss 的传输安全性（只能把 witness 传到 caas 里的服务，caas 服务确保会用完丢掉）
+//  Users must ensure the security of witness transmission (only pass witness to caas services, caas services ensure it's consumed and discarded)
     public fun add_enums<T: drop>(namespace: Object<NamespaceCore>, new_enum: String, witness: T) {
         let (label_record, voucher) = namespace::get_data_by_witness<T, Label>(namespace, witness);
         assert!(!label_record.enums.contains(&new_enum), ELABEL_ENUM_ALREADY_CONTAINS);
