@@ -7,15 +7,15 @@ module caas_framework::identity {
     use aptos_framework::event;
     use aptos_framework::timestamp;
 
-    /// Identity Registry
+    // Identity Registry
     struct IdentityRegistry has key {
-        /// TypeInfo -> IdentityInfo
+        // TypeInfo -> IdentityInfo
         registered_identities: SmartTable<TypeInfo, IdentityInfo>,
-        /// Project address -> TypeInfo list
+        // Project address -> TypeInfo list
         project_types: SmartTable<address, vector<TypeInfo>>
     }
 
-    /// Identity Information
+    // Identity Information
     struct IdentityInfo has store, copy, drop {
         project_address: address,
         registered_at: u64,
@@ -28,7 +28,21 @@ module caas_framework::identity {
         api_key: String
     }
 
-    /// Error codes
+    #[event]
+    struct IdentityRegisteredEvent<phantom T> has copy, store, drop {
+        project_address: address,
+        api_key: String
+    }
+
+    #[event]
+    struct IdentityStatusToggledEvent<phantom T> has copy, store, drop {
+        project_address: address,
+        api_key: String,
+        status_before_toggled: bool,
+        status_after_toggled: bool
+    }
+
+    // Error codes
     const E_NOT_ADMIN: u64 = 1;
     const E_NOT_REGISTERED: u64 = 2;
     const E_REGISTERED: u64 = 3;
@@ -45,8 +59,8 @@ module caas_framework::identity {
         )
     }
 
-    /// Register project identity (admin only)
-    /// Note: T does not require any ability constraints, only type info is fetched
+    // Register project identity (admin only)
+    // Note: T does not require any ability constraints, only type info is fetched
     public fun register_identity<T: drop>(admin: &signer, api_key: String) acquires IdentityRegistry {
         // TODO: admin account management
         assert!(signer::address_of(admin) == @caas_admin, E_NOT_ADMIN);
@@ -60,6 +74,7 @@ module caas_framework::identity {
             is_active: true,
             api_key: api_key
         };
+        event::emit(IdentityRegisteredEvent<T>{api_key, project_address: identity_info.project_address});
 
         // Update registry
         let registry = borrow_global_mut<IdentityRegistry>(@caas_framework);
@@ -77,9 +92,9 @@ module caas_framework::identity {
         event::emit(WitnessDropEvent<T>{api_key});
     }
 
-    /// Verify project identity
-    /// Note: This function verifies identity, then drop witness
-    public fun verify_identity<T: drop>(witness: T): (bool, address) acquires IdentityRegistry {
+    // Verify project identity
+    // Note: This function verifies identity, then drop witness
+    public fun verify_identity<T: drop>(_witness: T): (bool, address) acquires IdentityRegistry {
         // Get type info of witness (includes its defining address)
         let type_info = type_info::type_of<T>();
         // type_info includes: address, module name, struct name
@@ -96,11 +111,13 @@ module caas_framework::identity {
         let identity_info = smart_table::borrow(&registry.registered_identities, type_info);
         assert!(identity_info.is_active, E_IDENTITY_DISABLED);
 
+        event::emit(WitnessDropEvent<T>{api_key: identity_info.api_key});
+
         // Return project address
         (true, identity_info.project_address)
     }
 
-    /// Enable/disable project identity
+    // Enable/disable project identity
     public fun toggle_identity_status<T>(admin: &signer, enabled: bool) acquires IdentityRegistry {
         assert!(signer::address_of(admin) == @caas_admin, E_NOT_ADMIN);
 
@@ -109,7 +126,15 @@ module caas_framework::identity {
 
         let identity_info =
             smart_table::borrow_mut(&mut registry.registered_identities, type_info);
+        let status_before_toggled = identity_info.is_active;
         identity_info.is_active = enabled;
+
+        event::emit(IdentityStatusToggledEvent<T>{
+            project_address: identity_info.project_address,
+            api_key: identity_info.api_key,
+            status_before_toggled,
+            status_after_toggled: identity_info.is_active
+        });
     }
 }
 

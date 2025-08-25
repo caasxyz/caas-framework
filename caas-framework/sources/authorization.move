@@ -1,82 +1,95 @@
 module caas_framework::authorization {
 
     use std::signer;
-    use std::string::{String};
     use aptos_std::smart_table::{Self, SmartTable};
     use caas_framework::identity;
     use aptos_framework::event;
     use aptos_framework::timestamp;
 
-    /// Project information
+    // Project information
     struct AuthorizationKey has store, copy, drop {
-        /// Project identifier
+        // Project identifier
         // project_name: String,
-        /// Project object address
+        // Project object address
         authorized_object_address: address,
         authorizer_object_address: address
-        /// Authorizer address
+        // Authorizer address
         // authorizer: address
     }
 
-    /// Project information
-    /// Inter-project authorization registry
+    // Project information
+    // Inter-project authorization registry
     struct AuthorizationRegistry has key {
-        /// Authorized address -> Authorization information
-        /// One authorized address can only correspond to one authorization relationship
+        // Authorized address -> Authorization information
+        // One authorized address can only correspond to one authorization relationship
         authorizations: SmartTable<AuthorizationKey, AuthorizationInfo>,
 
-        /// Authorized party -> List of authorizers (for easy query)
+        // Authorized party -> List of authorizers (for easy query)
         authorized_to_authorizers: SmartTable<address, vector<AuthorizationInfo>>,
 
-        /// Authorizers party -> List of authorized (for easy query)
+        // Authorizers party -> List of authorized (for easy query)
         authorizer_to_authorized_projects: SmartTable<address, vector<AuthorizationInfo>>
     }
 
-    /// Project configuration (stored under the project object address)
+    // Project configuration (stored under the project object address)
     struct ProjectConfig has key {
-        /// Project owner address
+        // Project owner address
         owner: address,
-        /// Project creation time
+        // Project creation time
         created_at: u64
-        /// Other project configurations...
+        // Other project configurations...
     }
 
-    /// Authorization details
+    // Authorization details
     struct AuthorizationInfo has store, copy, drop {
-        /// Project information
+        // Project information
         project: address,
 
-        /// Authorized party address
-        /// TODO: may be distinguish from package even module
+        // Authorized party address
+        // TODO: may be distinguish from package even module
         authorized: address,
 
-        /// Authorization creation time
+        // Authorization creation time
         created_at: u64,
 
-        /// Expiration time (0 means never expires)
+        // Expiration time (0 means never expires)
         expires_at: u64,
 
-        /// Whether enabled
+        // Whether enabled
         is_active: bool,
 
-        /// Read permission
+        // Read permission
         read: bool,
 
-        /// Write permission (temporarily not enabled, always false)
+        // Write permission (temporarily not enabled, always false)
         write: bool
     }
+
+    #[event]
+    struct GrantReadAuthorizationEvent has drop, copy, store {
+        authorizer: address,
+        authorized: address
+    }
+
+
     #[event]
     struct AuthorizationRevokedEvent has drop, copy, store {
         authorizer: address,
-        authorized: address,
-        timestamp: u64
+        authorized: address
     }
 
     #[event]
     struct AuthorizationUsedEvent has drop, copy, store {
         authorized: address,
+        authorizer: address
+    }
+
+    #[event]
+    struct AuthorizationToggledEvent has drop, copy, store {
         authorizer: address,
-        timestamp: u64
+        authorized_address: address,
+        toggle_status_before: bool,
+        toggle_status_after: bool
     }
 
     const ENOT_VALID_WITNESS: u64 = 1;
@@ -91,15 +104,15 @@ module caas_framework::authorization {
         move_to(
             sender,
             AuthorizationRegistry {
-                /// Authorizer address -> Authorization information
-                /// One authorized address can only correspond to one authorization relationship
+                // Authorizer address -> Authorization information
+                // One authorized address can only correspond to one authorization relationship
                 authorizations: smart_table::new<AuthorizationKey, AuthorizationInfo>(),
 
-                /// Authorized party -> List of authorizers (for easy query)
+                // Authorized party -> List of authorizers (for easy query)
                 authorized_to_authorizers: smart_table::new<address, vector<
                     AuthorizationInfo>>(),
 
-                /// Authorized project -> Set of projects with permission
+                // Authorized project -> Set of projects with permission
                 authorizer_to_authorized_projects: smart_table::new<address, vector<
                     AuthorizationInfo>>()
 
@@ -162,7 +175,12 @@ module caas_framework::authorization {
             auth_info
         );
 
-        //TODO: emit a event
+        event::emit(
+            GrantReadAuthorizationEvent {
+                authorizer: authorizer_address,
+                authorized: authorized_address
+            }
+        );
     }
 
     inline fun add_authorizations(
@@ -186,7 +204,7 @@ module caas_framework::authorization {
         }
     }
 
-    /// Revoke authorization (callable by authorizer)
+    // Revoke authorization (callable by authorizer)
     public fun revoke_authorization<T: drop>(
         witness: T, authorized_address: address
     ) acquires AuthorizationRegistry {
@@ -206,8 +224,6 @@ module caas_framework::authorization {
             E_AUTHORIZATION_NOT_FOUND
         );
 
-        let auth_info = smart_table::borrow(&registry.authorizations, authorization_key);
-
         // Remove authorization
         let auth_info =
             smart_table::remove(&mut registry.authorizations, authorization_key);
@@ -226,8 +242,7 @@ module caas_framework::authorization {
         event::emit(
             AuthorizationRevokedEvent {
                 authorizer: witness_project_address,
-                authorized: authorized_address,
-                timestamp: timestamp::now_seconds()
+                authorized: authorized_address
             }
         );
     }
@@ -244,7 +259,7 @@ module caas_framework::authorization {
         };
     }
 
-    /// Admin disable/enable authorization
+    // Admin disable/enable authorization
     public fun toggle_authorization(
         caas_admin: &signer,
         authorizer: address,
@@ -283,7 +298,17 @@ module caas_framework::authorization {
             is_active
         );
 
+        let toggle_status_before = auth_info.is_active;
+        let toggle_status_after = is_active;
+
         auth_info.is_active = is_active;
+
+        event::emit(AuthorizationToggledEvent{
+            authorizer,
+            authorized_address,
+            toggle_status_before,
+            toggle_status_after
+        });
 
     }
 
@@ -301,11 +326,11 @@ module caas_framework::authorization {
 
     }
 
-    /// Verify if project B has permission to read project A's data
+    // Verify if project B has permission to read project A's data
     public fun verify_read_authorization<T: drop>(
         witness: T, authorizer_address: address
     ): bool acquires AuthorizationRegistry {
-        let (pass, witness_project_address) = identity::verify_identity<T>(witness);
+        let (_pass, witness_project_address) = identity::verify_identity<T>(witness);
         let registry = borrow_global<AuthorizationRegistry>(@caas_framework);
 
         let authorization_key = AuthorizationKey {
@@ -339,7 +364,7 @@ module caas_framework::authorization {
         auth_info.read
     }
 
-    /// Verify authorization through project object address
+    // Verify authorization through project object address
     public fun verify_read_authorization_by_project(
         authorized_address: address, project_object_address: address
     ): bool acquires AuthorizationRegistry {
@@ -370,13 +395,13 @@ module caas_framework::authorization {
         auth_info.read
     }
 
-    /// Use authorization to read data
+    // Use authorization to read data
     public fun use_authorization<T: drop>(
         authorizer_address: address, // Authorizer address
         witness: T // Authorized party's identity credential
     ): bool acquires AuthorizationRegistry {
         // Verify authorized party identity
-        let (pass, witness_project_address) =
+        let (_pass, witness_project_address) =
             identity::verify_identity(witness);
 
         // Verify authorization (now requires complete project information)
@@ -389,8 +414,7 @@ module caas_framework::authorization {
         event::emit(
             AuthorizationUsedEvent {
                 authorized: witness_project_address,
-                authorizer: authorizer_address,
-                timestamp: timestamp::now_seconds()
+                authorizer: authorizer_address
             }
         );
 

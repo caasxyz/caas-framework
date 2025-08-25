@@ -5,79 +5,81 @@ module caas_framework::namespace {
     use std::string::{String};
     use std::option::{Self, Option};
     use aptos_framework::timestamp;
+    use aptos_framework::event;
+    use aptos_std::type_info;
     use aptos_std::smart_table::{Self, SmartTable};
     use caas_framework::identity::{verify_identity};
     use caas_framework::authorization::{verify_read_authorization};
     use aptos_framework::object::{Self, Object, ExtendRef, TransferRef};
 
-    /// Namespace registry (stored under @caas_framework)
+    // Namespace registry (stored under @caas_framework)
     struct NamespaceRegistry has key {
-        /// Creator address → namespace list
+        // Creator address → namespace list
         // creator_to_namespaces: SmartTable<address, vector<address>>,
 
-        /// Project address → namespace list (a project can have multiple namespaces)
+        // Project address → namespace list (a project can have multiple namespaces)
         project_to_namespaces: SmartTable<address, vector<address>>,
 
-        /// Creation time index (bucketed by day)
-        /// TODO: I don't understand what the use case of this field
+        // Creation time index (bucketed by day)
+        // TODO: I don't understand what the use case of this field
         // creation_time_index: SmartTable<u64, vector<address>>,
 
-        /// Statistics
+        // Statistics
         total_namespaces: u64,
         total_root_spaces: u64,
         total_sub_spaces: u64
     }
 
-    /// Namespace object metadata (stored under each namespace object address)
+    // Namespace object metadata (stored under each namespace object address)
     struct NamespaceCore has key {
 
-        /// Associated project info
+        // Associated project info
         project_info: address,
 
-        /// extend ref for future resources patching
+        // extend ref for future resources patching
         extend_ref: ExtendRef,
 
         transfer_ref: TransferRef,
         
-        /// Parent namespace address (None for root namespace)
+        // Parent namespace address (None for root namespace)
         parent: Option<address>,
 
-        /// List of child namespaces
+        // List of child namespaces
         children: vector<address>,
 
-        /// Timestamps
+        // Timestamps
         created_at: u64,
         updated_at: u64,
 
-        /// Whether verified by CaaS
+        // Whether verified by CaaS
         is_verified: bool,
 
-        /// Namespace attributes (key-value storage)
+        // Namespace attributes (key-value storage)
         attributes: SmartTable<String, String>,
 
-        /// Access statistics
+        // Access statistics
         access_count: u64,
         last_accessed: u64
     }
 
-    /// Namespace configuration (controls access permissions and behavior)
+    // Namespace configuration (controls access permissions and behavior)
     struct NamespaceConfig has key {
-        /// Whether sub-namespaces can be created
+        // Whether sub-namespaces can be created
         allow_subspaces: bool,
 
-        /// Permission level for subspace creation
+        // Permission level for subspace creation
         // subspace_creation_permission: u8,
 
-        /// Whether ownership is transferable
+        // Whether ownership is transferable
         is_transferable: bool,
 
-        /// Whether public (public namespaces can be read by anyone)
+        // Whether public (public namespaces can be read by anyone)
         is_public: bool,
 
-        /// Whether sharing via authorization system is allowed
+        // Whether sharing via authorization system is allowed
         allow_authorization: bool,
 
-        /// Direct access control list (project addresses)
+        // Direct access control list (project addresses)
         access_control_list: vector<address>
     }
 
@@ -85,8 +87,34 @@ module caas_framework::namespace {
         data: Option<DataType>
     }
 
-    struct Voucher<DataType: store> {
+    struct Voucher<phantom DataType: store> {
         namespace: address
+    }
+
+    #[event]
+    struct NamespaceCreatedEvent has drop, copy, store {
+        project_address: address,
+        namespace: Object<NamespaceCore>,
+        parent: Option<address>
+    }
+
+    #[event]
+    struct DataPatchedEvent<phantom DataType> has drop, copy, store {
+        project_address: address,
+        namespace: Object<NamespaceCore>
+    }
+
+    #[event]
+    struct DataFetchedByProject<phantom DataType> has drop, copy, store {
+        project_address: address,
+        namespace_correspondingly_project_address: address,
+        namespace: Object<NamespaceCore>
+    }
+
+    #[event]
+    struct DataFetchedByWitness<phantom DataType> has drop, copy, store {
+        project_address: address,
+        namespace: Object<NamespaceCore>
     }
 
     const EWITNESS_VERIFIED_FAILED: u64 = 1;
@@ -99,11 +127,11 @@ module caas_framework::namespace {
         move_to(sender, NamespaceRegistry{
             project_to_namespaces: smart_table::new<address, vector<address>>(),
 
-            /// Creation time index (bucketed by day)
-            /// TODO: I don't understand what the use case of this field
+            // Creation time index (bucketed by day)
+            // TODO: I don't understand what the use case of this field
             // creation_time_index: SmartTable<u64, vector<address>>,
 
-            /// Statistics
+            // Statistics
             total_namespaces: 0,
             total_root_spaces: 0,
             total_sub_spaces: 0
@@ -113,7 +141,7 @@ module caas_framework::namespace {
     public fun create_namespace<T: drop>(
         witness: T, 
         parent_space: Option<Object<NamespaceCore>>
-    ) acquires NamespaceCore {
+    ): Object<NamespaceCore> acquires NamespaceCore {
         let project_address = verify_witness_return_project_address(witness);
         let construct_ref = object::create_object(project_address);
         let obj_signer = object::generate_signer(&construct_ref);
@@ -127,36 +155,45 @@ module caas_framework::namespace {
             option::none<address>()
         };
         move_to(&obj_signer, NamespaceCore{
-            /// Associated project info
+            // Associated project info
             project_info: project_address,
 
-            /// extend ref for future resources patching
+            // extend ref for future resources patching
             extend_ref: object::generate_extend_ref(&construct_ref),
 
             transfer_ref: object::generate_transfer_ref(&construct_ref),
             
-            /// Parent namespace address (None for root namespace)
+            // Parent namespace address (None for root namespace)
             parent,
 
-            /// List of child namespaces
+            // List of child namespaces
             children: vector::empty<address>(),
 
-            /// Timestamps
+            // Timestamps
             created_at: timestamp::now_seconds(),
             updated_at: timestamp::now_seconds(),
 
-            /// Whether verified by CaaS
-            /// TODO: What's the verfiy process?
+            // Whether verified by CaaS
+            // TODO: What's the verfiy process?
             is_verified: false,
 
-            /// Namespace attributes (key-value storage)
+            // Namespace attributes (key-value storage)
             attributes: smart_table::new<String, String>(),
 
-            /// Access statistics
+            // Access statistics
             access_count: 0,
             last_accessed: 0
+        });
 
-        })
+        let namespace_obj = object::address_to_object<NamespaceCore>(signer::address_of(&obj_signer));
+
+        event::emit(NamespaceCreatedEvent{
+            project_address,
+            namespace: namespace_obj,
+            parent
+        });
+        
+        namespace_obj
 
     }
 
@@ -165,12 +202,17 @@ module caas_framework::namespace {
         data: DataType,
         witness: T
     ) acquires NamespaceCore {
-        let _project_address = verify_witness_return_project_address(witness);
+        let project_address = verify_witness_return_project_address(witness);
         // Can use Data type for access control (only allow specific data types to be written under namespace)
         let core_data = borrow_global_mut<NamespaceCore>(object::object_address(&namespace));
         let obj_signer = object::generate_signer_for_extending(&core_data.extend_ref);
         move_to(&obj_signer, Container{
             data: option::some(data)
+        });
+
+        event::emit(DataPatchedEvent<DataType>{
+            project_address,
+            namespace
         });
     }
 
@@ -187,6 +229,12 @@ module caas_framework::namespace {
         let container = move_from<Container<DataType>>(obj_address);
         let data = container.data.extract();
         move_to(&obj_signer, container);
+
+        event::emit(DataFetchedByWitness<DataType>{
+            project_address,
+            namespace
+        });
+
         (data, Voucher<DataType>{
             namespace: obj_address
         })
@@ -198,6 +246,8 @@ module caas_framework::namespace {
         witness: T
     ): (DataType, Voucher<DataType>) acquires NamespaceCore, Container {
         let obj_address = object::object_address(&namespace);
+        let witness_type_info = type_info::type_of<T>();
+        let witness_project_address = type_info::account_address(&witness_type_info);
         let namespace_core = borrow_global_mut<NamespaceCore>(obj_address);
         assert!(namespace_core.project_info == project, ENAMESPACE_PROJECT_NOT_MATCH);
         // TODO: authorization level should be considered here, maybe the different level could access to different subspace
@@ -208,6 +258,11 @@ module caas_framework::namespace {
         let container = move_from<Container<DataType>>(obj_address);
         let data = container.data.extract();
         move_to(&obj_signer, container);
+        event::emit(DataFetchedByProject<DataType>{
+            project_address: witness_project_address,
+            namespace_correspondingly_project_address: project,
+            namespace
+        });
         (data, Voucher<DataType>{
             namespace: obj_address
         })
