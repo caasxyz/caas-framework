@@ -122,6 +122,9 @@ module caas_framework::namespace {
     const ENAMESPACE_PROJECT_NOT_MATCH: u64 = 3;
     const ENAMESPACE_NOT_EXISTS: u64 = 4;
     const EWITNESS_PROJECT_NOT_MATCH: u64 = 5;
+    const ENAMESPACE_TOO_DEEP: u64 = 6;
+
+    const MAX_NAMESPACE_DEPTH: u64 = 2;
 
     fun init_module(sender: &signer) {
         move_to(sender, NamespaceRegistry{
@@ -147,6 +150,7 @@ module caas_framework::namespace {
         let obj_signer = object::generate_signer(&construct_ref);
         let parent = if(parent_space.is_some()) {
             let parent_namespace_obj_address = object::object_address(&parent_space.destroy_some());
+            ensure_parent_depth(parent_namespace_obj_address);
             let parent_namespace_core = borrow_global_mut<NamespaceCore>(parent_namespace_obj_address);
             parent_namespace_core.children.push_back(signer::address_of(&obj_signer));
             option::some(parent_namespace_obj_address)
@@ -284,6 +288,21 @@ module caas_framework::namespace {
         assert!(pass, EWITNESS_VERIFIED_FAILED);
         project_address
     }
+
+    fun ensure_parent_depth(namespace_address: address) acquires NamespaceCore {
+        let depth: u64 = 0;
+        let current_namespace_core = borrow_global<NamespaceCore>(namespace_address);
+        while(true) {
+            depth += 1;
+            assert!(depth<=MAX_NAMESPACE_DEPTH, ENAMESPACE_TOO_DEEP);
+            let next_namespace_address = *current_namespace_core.parent.borrow(); 
+            if(exists<NamespaceCore>(next_namespace_address)) {
+                current_namespace_core = borrow_global<NamespaceCore>(next_namespace_address);
+            } else {
+                break;
+            };
+        }
+    } 
 
     #[view]
     public fun get_project_address_by_namespace(namespace: Object<NamespaceCore>): address acquires NamespaceCore {
