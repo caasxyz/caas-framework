@@ -64,7 +64,10 @@ module caas_framework::authorization {
         read: bool,
 
         // Write permission (temporarily not enabled, always false)
-        write: bool
+        write: bool, 
+
+        // reserved field for hierarchical authorization 
+        level: u8
     }
 
     struct Module has store, copy, drop {
@@ -75,7 +78,8 @@ module caas_framework::authorization {
     #[event]
     struct GrantReadAuthorizationEvent has drop, copy, store {
         authorizer: address,
-        authorized: Module
+        authorized: Module,
+        level: u8
     }
 
 
@@ -133,7 +137,8 @@ module caas_framework::authorization {
         _project_object_address: address, // Project object address
         authorized_address: address, // Authorized party address
         authorized_module_name: String, // Authorized module name
-        duration_seconds: u64 // 0 means permanent authorization
+        duration_seconds: u64, // 0 means permanent authorization
+        level: u8
     ) acquires AuthorizationRegistry {
         let (pass, witness_project_address) = identity::verify_identity(witness);
         assert!(pass, ENOT_VALID_WITNESS);
@@ -164,7 +169,8 @@ module caas_framework::authorization {
             } else { 0 },
             is_active: true,
             read: true,
-            write: false // Write permission temporarily disabled
+            write: false, // Write permission temporarily disabled
+            level
         };
 
         // Update registry
@@ -191,7 +197,8 @@ module caas_framework::authorization {
         event::emit(
             GrantReadAuthorizationEvent {
                 authorizer: authorizer_address,
-                authorized: authorized_module
+                authorized: authorized_module,
+                level
             }
         );
     }
