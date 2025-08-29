@@ -3,7 +3,7 @@ module caas_framework::identity {
     use aptos_framework::smart_table::{Self, SmartTable};
     use std::signer;
     use std::vector;
-    use std::string::{String};
+    use std::string::{Self, String};
     use aptos_framework::event;
     use aptos_framework::timestamp;
 
@@ -18,6 +18,8 @@ module caas_framework::identity {
     // Identity Information
     struct IdentityInfo has store, copy, drop {
         project_address: address,
+        module_name: String,
+        struct_name: String,
         registered_at: u64,
         is_active: bool,
         api_key: String
@@ -48,6 +50,9 @@ module caas_framework::identity {
     const E_REGISTERED: u64 = 3;
     const E_IDENTITY_DISABLED: u64 = 4;
     const E_INVALID_API_KEY: u64 = 5;
+    const EPROJECT_ADDRESS_NOT_MATCH: u64 = 6;
+    const EMODULE_NAME_NOT_MATCH: u64 = 7;
+    const ESTRUCT_NAME_NOT_MATCH: u64 = 8;
 
     fun init_module(sender: &signer) {
         move_to(
@@ -67,9 +72,13 @@ module caas_framework::identity {
 
         let type_info = type_info::type_of<T>();
         let project_addr = type_info::account_address(&type_info);
+        let module_name = string::utf8(type_info::module_name(&type_info));
+        let struct_name = string::utf8(type_info::struct_name(&type_info));
 
         let identity_info = IdentityInfo {
             project_address: project_addr,
+            module_name,
+            struct_name,
             registered_at: timestamp::now_seconds(),
             is_active: true,
             api_key: api_key
@@ -80,7 +89,6 @@ module caas_framework::identity {
         let registry = borrow_global_mut<IdentityRegistry>(@caas_framework);
         assert!(!registry.registered_identities.contains(type_info), E_REGISTERED);
         smart_table::add(&mut registry.registered_identities, type_info, identity_info);
-
 
         // Update project type mapping
         if (!smart_table::contains(&registry.project_types, project_addr)) {
@@ -96,19 +104,25 @@ module caas_framework::identity {
     // Note: This function verifies identity, then drop witness
     public fun verify_identity<T: drop>(_witness: T): (bool, address) acquires IdentityRegistry {
         // Get type info of witness (includes its defining address)
-        let type_info = type_info::type_of<T>();
+        let witness_type_info = type_info::type_of<T>();
         // type_info includes: address, module name, struct name
         // e.g.: 0x123::identity::ProjectIdentity
+        let project_address = type_info::account_address(&witness_type_info);
+        let module_name = type_info::module_name(&witness_type_info);
+        let struct_name = type_info::struct_name(&witness_type_info);
 
         let registry = borrow_global<IdentityRegistry>(@caas_framework);
 
         // Check if this type is registered
         assert!(
-            smart_table::contains(&registry.registered_identities, type_info),
+            smart_table::contains(&registry.registered_identities, witness_type_info),
             E_NOT_REGISTERED
         );
 
-        let identity_info = smart_table::borrow(&registry.registered_identities, type_info);
+        let identity_info = smart_table::borrow(&registry.registered_identities, witness_type_info);
+        assert!(identity_info.project_address == project_address, EPROJECT_ADDRESS_NOT_MATCH);
+        assert!(identity_info.module_name == string::utf8(module_name), EMODULE_NAME_NOT_MATCH);
+        assert!(identity_info.struct_name == string::utf8(struct_name), ESTRUCT_NAME_NOT_MATCH);
         assert!(identity_info.is_active, E_IDENTITY_DISABLED);
 
         event::emit(WitnessDropEvent<T>{api_key: identity_info.api_key});
