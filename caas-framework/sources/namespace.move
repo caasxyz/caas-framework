@@ -295,6 +295,7 @@ module caas_framework::namespace {
         while(true) {
             depth += 1;
             assert!(depth<=MAX_NAMESPACE_DEPTH, ENAMESPACE_TOO_DEEP);
+            if(current_namespace_core.parent.is_none()) break;
             let next_namespace_address = *current_namespace_core.parent.borrow(); 
             if(exists<NamespaceCore>(next_namespace_address)) {
                 current_namespace_core = borrow_global<NamespaceCore>(next_namespace_address);
