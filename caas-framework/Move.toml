@@ -4,7 +4,7 @@ version = "1.0.0"
 authors = []
 
 [addresses]
-caas_framework = "0xe526ae944d8fb140e4098942e444e5e4e25010009b26bd97c9b11468dd9e8bb4"
+caas_framework = "0x4948422062705cf45c4ec183d991fba179a225e2c768178d4e471a644400dabb"
 caas_admin = "0x0e5fdb3c068721a10a7e43d5449eab252f7e668e1f42adf0605648553e5de341"
 
 [dev-addresses]

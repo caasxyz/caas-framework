@@ -11,6 +11,8 @@ module caas_framework::identity {
     struct IdentityRegistry has key {
         // TypeInfo -> IdentityInfo
         registered_identities: SmartTable<TypeInfo, IdentityInfo>,
+        // API key -> IdentityInfo
+        registered_api_keys: SmartTable<String, TypeInfo>,
         // Project address -> TypeInfo list
         project_types: SmartTable<address, vector<TypeInfo>>
     }
@@ -59,6 +61,7 @@ module caas_framework::identity {
             sender,
             IdentityRegistry {
                 registered_identities: smart_table::new<TypeInfo, IdentityInfo>(),
+                registered_api_keys: smart_table::new<String, TypeInfo>(),
                 project_types: smart_table::new<address, vector<TypeInfo>>()
             }
         )
@@ -88,7 +91,9 @@ module caas_framework::identity {
         // Update registry
         let registry = borrow_global_mut<IdentityRegistry>(@caas_framework);
         assert!(!registry.registered_identities.contains(type_info), E_REGISTERED);
+        assert!(!registry.registered_api_keys.contains(api_key), E_REGISTERED);
         smart_table::add(&mut registry.registered_identities, type_info, identity_info);
+        smart_table::add(&mut registry.registered_api_keys, api_key, type_info);
 
         // Update project type mapping
         if (!smart_table::contains(&registry.project_types, project_addr)) {
