@@ -4,7 +4,7 @@ module caas_framework::two_step_transfer_object {
     use aptos_framework::event;
     use aptos_framework::object::{Self, ObjectCore, ExtendRef, DeleteRef};
 
-    struct ObjectExchange has key, drop {
+    struct ObjectExchange has key {
         exchange_holder: ExtendRef,
         object_address: address,
         previous_owner: address,
@@ -39,6 +39,7 @@ module caas_framework::two_step_transfer_object {
     const ENOT_OBJECT_OWNER: u64 = 1;
     const EWRONG_CLAIMER: u64 = 2;
     const EWRONG_OBJECT_ADDRESS: u64 = 3;
+    const EWRONG_PREVIOUS_OWNER: u64 = 4;
 
     public entry fun transfer_object(owner: &signer, object_address: address, to: address) {
         let owner_address = signer::address_of(owner);
@@ -74,12 +75,13 @@ module caas_framework::two_step_transfer_object {
         let ObjectExchange{
             exchange_holder,
             object_address: object_address_to_check,
-            previous_owner: _,
+            previous_owner: previous_owner_to_check,
             pending_owner,
             exchange_delete_ref
         } = move_from<ObjectExchange>(exchange_address);
         assert!(claimer == pending_owner, EWRONG_CLAIMER);
         assert!(object_address == object_address_to_check, EWRONG_OBJECT_ADDRESS);
+        assert!(previous_owner_to_check == previous_owner, EWRONG_PREVIOUS_OWNER);
         let exchange_signer = object::generate_signer_for_extending(&exchange_holder);
         object::transfer_call(&exchange_signer, object_address, claimer);
         object::delete(exchange_delete_ref);
