@@ -309,12 +309,25 @@ module caas_framework::namespace {
 
     #[view]
     public fun get_project_address_by_namespace(namespace: Object<NamespaceCore>): address acquires NamespaceCore {
-
         let namespace_obj_address = object::object_address(&namespace);
         assert!(exists<NamespaceCore>(namespace_obj_address), ENAMESPACE_NOT_EXISTS);
         let namespace_core = borrow_global<NamespaceCore>(namespace_obj_address);
         namespace_core.project_info
+    }
 
+    public fun has_data_container<T: drop, DataType: store>(
+        namespace: Object<NamespaceCore>, 
+        witness: T
+    ): bool acquires NamespaceCore {
+        let obj_address = object::object_address(&namespace);
+        let witness_type_info = type_info::type_of<T>();
+        let witness_project_address = type_info::account_address(&witness_type_info);
+        let namespace_core = borrow_global_mut<NamespaceCore>(obj_address);
+        if(namespace_core.project_info != witness_project_address) {
+            let pass = verify_read_authorization(witness, namespace_core.project_info);
+            assert!(pass, ENO_PERMISSION_TO_ACCESS_NAMESPACE);
+        };
+        exists<Container<DataType>>(obj_address)
     }
     
 }
