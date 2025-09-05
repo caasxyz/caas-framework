@@ -69,7 +69,7 @@ module caas_framework::identity {
 
     // Register project identity (admin only)
     // Note: T does not require any ability constraints, only type info is fetched
-    public fun register_identity<T: drop>(admin: &signer, api_key: String) acquires IdentityRegistry {
+    public entry fun register_identity<T: drop>(admin: &signer, api_key: String) acquires IdentityRegistry {
         // TODO: admin account management
         assert!(signer::address_of(admin) == @caas_admin, E_NOT_ADMIN);
 
