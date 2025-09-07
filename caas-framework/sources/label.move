@@ -1,15 +1,12 @@
-module use_case::label {
-    use std::vector;
-    use std::signer;
+module caas_framework::label {
     use aptos_std::type_info;
     use aptos_framework::event;
-    use std::string::{Self, String};
-    use aptos_framework::object::{Self, Object};
+    use std::string::{String};
+    use aptos_framework::object::{Object};
     use aptos_std::smart_table::{Self, SmartTable};
     use aptos_std::smart_vector::{Self, SmartVector};
 
-    use caas_framework::identity::verify_identity;
-    use caas_framework::namespace::{Self, NamespaceCore, Voucher, get_data_by_witness, get_data_by_project};
+    use caas_framework::namespace::{Self, NamespaceCore, Voucher};
 
     struct Label has store {
         enums: SmartVector<String>,
@@ -142,6 +139,54 @@ module use_case::label {
         };
         namespace::return_data(label_record, voucher);
         whether_have_label
+    }
+
+    public fun has_label_enum<T: drop>(
+        namespace: Object<NamespaceCore>,
+        label: String,
+        witness: T
+    ): bool {
+        let witness_type_info = type_info::type_of<T>();
+        let type_info_address = type_info::account_address(&witness_type_info);
+        let namespace_project_address = namespace::get_project_address_by_namespace(namespace);
+        let (label_record, voucher) = if(type_info_address == namespace_project_address) {
+            get_labels_by_witness(namespace, witness)
+        } else {
+            get_labels_by_project(namespace, type_info_address, witness)
+        };
+        let whether_have_label_enum = label_record.enums.contains(&label);
+        namespace::return_data(label_record, voucher);
+        whether_have_label_enum
+    }
+
+    public fun get_address_labels<T: drop>(
+        namespace: Object<NamespaceCore>,
+        address_to_check: address,
+        witness: T
+    ): vector<String> {
+        let witness_type_info = type_info::type_of<T>();
+        let type_info_address = type_info::account_address(&witness_type_info);
+        let namespace_project_address = namespace::get_project_address_by_namespace(namespace);
+        let (label_record, voucher) = if(type_info_address == namespace_project_address) {
+            get_labels_by_witness(namespace, witness)
+        } else {
+            get_labels_by_project(namespace, type_info_address, witness)
+        };
+        let label_list = if(label_record.labels.contains(address_to_check)) {
+            let address_labels = label_record.labels.borrow(address_to_check);
+            address_labels.to_vector()
+        } else {
+            vector<String>[]
+        };
+        namespace::return_data(label_record, voucher);
+        label_list
+    }
+
+    public fun does_label_initialized<T: drop>(
+        namespace: Object<NamespaceCore>,
+        witness: T
+    ): bool {
+        namespace::has_data_container<T, Label>(namespace, witness)
     }
 
 }

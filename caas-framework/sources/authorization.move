@@ -480,14 +480,12 @@ module caas_framework::authorization {
         authorizer_address: address, // Authorizer address
         witness: T // Authorized party's identity credential
     ): bool acquires AuthorizationRegistry {
-        // Verify authorized party identity
-        let (_pass, witness_project_address) =
-            identity::verify_identity(witness);
         let witness_type_info = type_info::type_of<T>();
+        let witness_project_address = type_info::account_address(&witness_type_info);
         let module_name = type_info::module_name(&witness_type_info);
         // Verify authorization (now requires complete project information)
         assert!(
-            verify_read_authorization(witness_project_address, authorizer_address),
+            verify_read_authorization(witness, authorizer_address),
             E_UNAUTHORIZED
         );
         let authorized_module = Module{

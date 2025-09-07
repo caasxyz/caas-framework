@@ -152,6 +152,7 @@ module caas_framework::namespace {
             let parent_namespace_obj_address = object::object_address(&parent_space.destroy_some());
             ensure_parent_depth(parent_namespace_obj_address);
             let parent_namespace_core = borrow_global_mut<NamespaceCore>(parent_namespace_obj_address);
+            assert!(project_address == parent_namespace_core.project_info, ENAMESPACE_PROJECT_NOT_MATCH);
             parent_namespace_core.children.push_back(signer::address_of(&obj_signer));
             option::some(parent_namespace_obj_address)
         } else {
@@ -209,6 +210,7 @@ module caas_framework::namespace {
         let project_address = verify_witness_return_project_address(witness);
         // Can use Data type for access control (only allow specific data types to be written under namespace)
         let core_data = borrow_global_mut<NamespaceCore>(object::object_address(&namespace));
+        assert!(project_address == core_data.project_info, ENAMESPACE_PROJECT_NOT_MATCH);
         let obj_signer = object::generate_signer_for_extending(&core_data.extend_ref);
         move_to(&obj_signer, Container{
             data: option::some(data)
@@ -295,6 +297,7 @@ module caas_framework::namespace {
         while(true) {
             depth += 1;
             assert!(depth<=MAX_NAMESPACE_DEPTH, ENAMESPACE_TOO_DEEP);
+            if(current_namespace_core.parent.is_none()) break;
             let next_namespace_address = *current_namespace_core.parent.borrow(); 
             if(exists<NamespaceCore>(next_namespace_address)) {
                 current_namespace_core = borrow_global<NamespaceCore>(next_namespace_address);
@@ -306,12 +309,25 @@ module caas_framework::namespace {
 
     #[view]
     public fun get_project_address_by_namespace(namespace: Object<NamespaceCore>): address acquires NamespaceCore {
-
         let namespace_obj_address = object::object_address(&namespace);
         assert!(exists<NamespaceCore>(namespace_obj_address), ENAMESPACE_NOT_EXISTS);
         let namespace_core = borrow_global<NamespaceCore>(namespace_obj_address);
         namespace_core.project_info
+    }
 
+    public fun has_data_container<T: drop, DataType: store>(
+        namespace: Object<NamespaceCore>, 
+        witness: T
+    ): bool acquires NamespaceCore {
+        let obj_address = object::object_address(&namespace);
+        let witness_type_info = type_info::type_of<T>();
+        let witness_project_address = type_info::account_address(&witness_type_info);
+        let namespace_core = borrow_global_mut<NamespaceCore>(obj_address);
+        if(namespace_core.project_info != witness_project_address) {
+            let pass = verify_read_authorization(witness, namespace_core.project_info);
+            assert!(pass, ENO_PERMISSION_TO_ACCESS_NAMESPACE);
+        };
+        exists<Container<DataType>>(obj_address)
     }
     
 }
