@@ -3,6 +3,7 @@ module caas_framework::identity {
     use aptos_framework::smart_table::{Self, SmartTable};
     use std::signer;
     use std::vector;
+    use std::option::{Self, Option};
     use std::string::{Self, String};
     use aptos_framework::event;
     use aptos_framework::timestamp;
@@ -24,7 +25,8 @@ module caas_framework::identity {
         struct_name: String,
         registered_at: u64,
         is_active: bool,
-        api_key: String
+        api_key: String,
+        optional_signer: Option<address>
     }
 
     #[event]
@@ -46,6 +48,21 @@ module caas_framework::identity {
         status_after_toggled: bool
     }
 
+    #[event]
+    struct IdentityOptionalSignerSetEvent<phantom T> has copy, store, drop {
+        project_address: address,
+        api_key: String,
+        old_optional_signer_address: Option<address>,
+        new_optional_signer_address: address
+    }
+
+    #[event]
+    struct IdentityOptionalSignerRemovedEvent<phantom T> has copy, store, drop {
+        project_address: address,
+        api_key: String,
+        removed_optional_signer_address: address,
+    }
+
     // Error codes
     const E_NOT_ADMIN: u64 = 1;
     const E_NOT_REGISTERED: u64 = 2;
@@ -55,6 +72,7 @@ module caas_framework::identity {
     const EPROJECT_ADDRESS_NOT_MATCH: u64 = 6;
     const EMODULE_NAME_NOT_MATCH: u64 = 7;
     const ESTRUCT_NAME_NOT_MATCH: u64 = 8;
+    const EOPTIONAL_SIGNER_NOT_SET: u64 = 9;
 
     fun init_module(sender: &signer) {
         move_to(
@@ -84,7 +102,8 @@ module caas_framework::identity {
             struct_name,
             registered_at: timestamp::now_seconds(),
             is_active: true,
-            api_key: api_key
+            api_key: api_key,
+            optional_signer: option::none<address>()
         };
         event::emit(IdentityRegisteredEvent<T>{api_key, project_address: identity_info.project_address});
 
@@ -108,27 +127,15 @@ module caas_framework::identity {
     // Verify project identity
     // Note: This function verifies identity, then drop witness
     public fun verify_identity<T: drop>(_witness: T): (bool, address) acquires IdentityRegistry {
-        // Get type info of witness (includes its defining address)
-        let witness_type_info = type_info::type_of<T>();
-        // type_info includes: address, module name, struct name
-        // e.g.: 0x123::identity::ProjectIdentity
-        let project_address = type_info::account_address(&witness_type_info);
-        let module_name = type_info::module_name(&witness_type_info);
-        let struct_name = type_info::struct_name(&witness_type_info);
+        let witness_type_info = get_witness_type_info<T>();
+        let (project_address, module_name, struct_name) = get_witness_type_info_detail<T>(&witness_type_info); 
 
         let registry = borrow_global<IdentityRegistry>(@caas_framework);
 
-        // Check if this type is registered
-        assert!(
-            smart_table::contains(&registry.registered_identities, witness_type_info),
-            E_NOT_REGISTERED
-        );
+        assert_witness_is_registered(registry, witness_type_info);
 
         let identity_info = smart_table::borrow(&registry.registered_identities, witness_type_info);
-        assert!(identity_info.project_address == project_address, EPROJECT_ADDRESS_NOT_MATCH);
-        assert!(identity_info.module_name == string::utf8(module_name), EMODULE_NAME_NOT_MATCH);
-        assert!(identity_info.struct_name == string::utf8(struct_name), ESTRUCT_NAME_NOT_MATCH);
-        assert!(identity_info.is_active, E_IDENTITY_DISABLED);
+        assert_identity_is_valid(identity_info, project_address, module_name, struct_name);
 
         event::emit(WitnessDropEvent<T>{api_key: identity_info.api_key});
 
@@ -154,6 +161,116 @@ module caas_framework::identity {
             status_before_toggled,
             status_after_toggled: identity_info.is_active
         });
+    }
+
+    public fun set_optional_signer<T: drop>(
+        _witness: T, 
+        optional_signer_address: address
+    ) acquires IdentityRegistry {
+        let witness_type_info = get_witness_type_info<T>();
+        let (project_address, module_name, struct_name) = get_witness_type_info_detail<T>(&witness_type_info); 
+
+        let registry = borrow_global_mut<IdentityRegistry>(@caas_framework);
+
+        assert_witness_is_registered(registry, witness_type_info);
+
+        let identity_info = smart_table::borrow_mut(&mut registry.registered_identities, witness_type_info);
+        assert_identity_is_valid(identity_info, project_address, module_name, struct_name);
+        let old_optional_signer_address = identity_info.optional_signer.swap_or_fill(optional_signer_address);
+
+        event::emit(IdentityOptionalSignerSetEvent<T>{
+            project_address,
+            api_key: identity_info.api_key,
+            old_optional_signer_address,
+            new_optional_signer_address: optional_signer_address
+        });
+    }
+
+    public fun remove_optional_signer<T: drop>(_witness: T) acquires IdentityRegistry {
+        let witness_type_info = get_witness_type_info<T>();
+        let (project_address, module_name, struct_name) = get_witness_type_info_detail<T>(&witness_type_info); 
+
+        let registry = borrow_global_mut<IdentityRegistry>(@caas_framework);
+
+        assert_witness_is_registered(registry, witness_type_info);
+
+        let identity_info = smart_table::borrow_mut(&mut registry.registered_identities, witness_type_info);
+        assert_identity_is_valid(identity_info, project_address, module_name, struct_name);
+        assert!(identity_info.optional_signer.is_some(), EOPTIONAL_SIGNER_NOT_SET);
+        let removed_optional_signer_address = identity_info.optional_signer.extract();
+
+        event::emit(IdentityOptionalSignerRemovedEvent<T>{
+            project_address,
+            api_key: identity_info.api_key,
+            removed_optional_signer_address,
+        });
+    }
+
+    public fun is_optional_signer_set<T: drop>(): bool acquires IdentityRegistry {
+        let witness_type_info = get_witness_type_info<T>();
+        let (project_address, module_name, struct_name) = get_witness_type_info_detail<T>(&witness_type_info); 
+
+        let registry = borrow_global<IdentityRegistry>(@caas_framework);
+
+        assert_witness_is_registered(registry, witness_type_info);
+
+        let identity_info = smart_table::borrow(&registry.registered_identities, witness_type_info);
+        assert_identity_is_valid(identity_info, project_address, module_name, struct_name);
+
+        identity_info.optional_signer.is_some()
+
+    }
+
+    public fun get_optional_signer<T: drop>(): address acquires IdentityRegistry {
+        let witness_type_info = get_witness_type_info<T>();
+        let (project_address, module_name, struct_name) = get_witness_type_info_detail<T>(&witness_type_info); 
+
+        let registry = borrow_global<IdentityRegistry>(@caas_framework);
+
+        assert_witness_is_registered(registry, witness_type_info);
+
+        let identity_info = smart_table::borrow(&registry.registered_identities, witness_type_info);
+        assert_identity_is_valid(identity_info, project_address, module_name, struct_name);
+
+        *identity_info.optional_signer.borrow()
+
+    }
+
+    fun assert_identity_is_valid(
+        identity_info: &IdentityInfo, 
+        project_address: address, 
+        module_name: vector<u8>, 
+        struct_name: vector<u8>
+    ) {
+        assert!(identity_info.project_address == project_address, EPROJECT_ADDRESS_NOT_MATCH);
+        assert!(identity_info.module_name == string::utf8(module_name), EMODULE_NAME_NOT_MATCH);
+        assert!(identity_info.struct_name == string::utf8(struct_name), ESTRUCT_NAME_NOT_MATCH);
+        assert!(identity_info.is_active, E_IDENTITY_DISABLED);
+
+    }
+
+    fun assert_witness_is_registered(registry: &IdentityRegistry, witness_type_info: TypeInfo) {
+        // Check if this type is registered
+        assert!(
+            smart_table::contains(&registry.registered_identities, witness_type_info),
+            E_NOT_REGISTERED
+        );
+    }
+
+    // Get type info of witness (includes its defining address)
+    fun get_witness_type_info<T: drop>(): TypeInfo {
+        type_info::type_of<T>()
+    }
+
+    fun get_witness_type_info_detail<T: drop>(witness_type_info: &TypeInfo): (address, vector<u8>, vector<u8>) {
+        // type_info includes: address, module name, struct name
+        // e.g.: 0x123::identity::ProjectIdentity
+        let project_address = type_info::account_address(witness_type_info);
+        let module_name = type_info::module_name(witness_type_info);
+        let struct_name = type_info::struct_name(witness_type_info);
+
+        (project_address, module_name, struct_name)
+
     }
 }
 
