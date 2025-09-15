@@ -3,7 +3,6 @@ module caas_framework::identity {
     use aptos_framework::smart_table::{Self, SmartTable};
     use std::signer;
     use std::vector;
-    use std::option::{Self, Option};
     use std::string::{Self, String};
     use aptos_framework::event;
     use aptos_framework::timestamp;
@@ -26,7 +25,6 @@ module caas_framework::identity {
         registered_at: u64,
         is_active: bool,
         api_key: String,
-        optional_signer: Option<address>
     }
 
     #[event]
@@ -48,21 +46,6 @@ module caas_framework::identity {
         status_after_toggled: bool
     }
 
-    #[event]
-    struct IdentityOptionalSignerSetEvent<phantom T> has copy, store, drop {
-        project_address: address,
-        api_key: String,
-        old_optional_signer_address: Option<address>,
-        new_optional_signer_address: address
-    }
-
-    #[event]
-    struct IdentityOptionalSignerRemovedEvent<phantom T> has copy, store, drop {
-        project_address: address,
-        api_key: String,
-        removed_optional_signer_address: address,
-    }
-
     // Error codes
     const E_NOT_ADMIN: u64 = 1;
     const E_NOT_REGISTERED: u64 = 2;
@@ -72,7 +55,6 @@ module caas_framework::identity {
     const EPROJECT_ADDRESS_NOT_MATCH: u64 = 6;
     const EMODULE_NAME_NOT_MATCH: u64 = 7;
     const ESTRUCT_NAME_NOT_MATCH: u64 = 8;
-    const EOPTIONAL_SIGNER_NOT_SET: u64 = 9;
 
     fun init_module(sender: &signer) {
         move_to(
@@ -90,6 +72,10 @@ module caas_framework::identity {
     public entry fun register_identity<T: drop>(admin: &signer, api_key: String) acquires IdentityRegistry {
         // TODO: admin account management
         assert!(signer::address_of(admin) == @caas_admin, E_NOT_ADMIN);
+        register_identity_internal<T>(api_key);
+    }
+
+    fun register_identity_internal<T: drop>(api_key: String) acquires IdentityRegistry {
 
         let type_info = type_info::type_of<T>();
         let project_addr = type_info::account_address(&type_info);
@@ -103,7 +89,6 @@ module caas_framework::identity {
             registered_at: timestamp::now_seconds(),
             is_active: true,
             api_key: api_key,
-            optional_signer: option::none<address>()
         };
         event::emit(IdentityRegisteredEvent<T>{api_key, project_address: identity_info.project_address});
 
@@ -122,6 +107,7 @@ module caas_framework::identity {
         vector::push_back(types, type_info);
 
         event::emit(WitnessDropEvent<T>{api_key});
+
     }
 
     // Verify project identity
@@ -163,77 +149,9 @@ module caas_framework::identity {
         });
     }
 
-    public fun set_optional_signer<T: drop>(
-        _witness: T, 
-        optional_signer_address: address
-    ) acquires IdentityRegistry {
-        let witness_type_info = get_witness_type_info<T>();
-        let (project_address, module_name, struct_name) = get_witness_type_info_detail<T>(&witness_type_info); 
-
-        let registry = borrow_global_mut<IdentityRegistry>(@caas_framework);
-
-        assert_witness_is_registered(registry, witness_type_info);
-
-        let identity_info = smart_table::borrow_mut(&mut registry.registered_identities, witness_type_info);
-        assert_identity_is_valid(identity_info, project_address, module_name, struct_name);
-        let old_optional_signer_address = identity_info.optional_signer.swap_or_fill(optional_signer_address);
-
-        event::emit(IdentityOptionalSignerSetEvent<T>{
-            project_address,
-            api_key: identity_info.api_key,
-            old_optional_signer_address,
-            new_optional_signer_address: optional_signer_address
-        });
-    }
-
-    public fun remove_optional_signer<T: drop>(_witness: T) acquires IdentityRegistry {
-        let witness_type_info = get_witness_type_info<T>();
-        let (project_address, module_name, struct_name) = get_witness_type_info_detail<T>(&witness_type_info); 
-
-        let registry = borrow_global_mut<IdentityRegistry>(@caas_framework);
-
-        assert_witness_is_registered(registry, witness_type_info);
-
-        let identity_info = smart_table::borrow_mut(&mut registry.registered_identities, witness_type_info);
-        assert_identity_is_valid(identity_info, project_address, module_name, struct_name);
-        assert!(identity_info.optional_signer.is_some(), EOPTIONAL_SIGNER_NOT_SET);
-        let removed_optional_signer_address = identity_info.optional_signer.extract();
-
-        event::emit(IdentityOptionalSignerRemovedEvent<T>{
-            project_address,
-            api_key: identity_info.api_key,
-            removed_optional_signer_address,
-        });
-    }
-
-    public fun is_optional_signer_set<T: drop>(): bool acquires IdentityRegistry {
-        let witness_type_info = get_witness_type_info<T>();
-        let (project_address, module_name, struct_name) = get_witness_type_info_detail<T>(&witness_type_info); 
-
-        let registry = borrow_global<IdentityRegistry>(@caas_framework);
-
-        assert_witness_is_registered(registry, witness_type_info);
-
-        let identity_info = smart_table::borrow(&registry.registered_identities, witness_type_info);
-        assert_identity_is_valid(identity_info, project_address, module_name, struct_name);
-
-        identity_info.optional_signer.is_some()
-
-    }
-
-    public fun get_optional_signer<T: drop>(): address acquires IdentityRegistry {
-        let witness_type_info = get_witness_type_info<T>();
-        let (project_address, module_name, struct_name) = get_witness_type_info_detail<T>(&witness_type_info); 
-
-        let registry = borrow_global<IdentityRegistry>(@caas_framework);
-
-        assert_witness_is_registered(registry, witness_type_info);
-
-        let identity_info = smart_table::borrow(&registry.registered_identities, witness_type_info);
-        assert_identity_is_valid(identity_info, project_address, module_name, struct_name);
-
-        *identity_info.optional_signer.borrow()
-
+    public fun get_project_address_by_type<T: drop>(): address {
+        let witness_type_info = type_info::type_of<T>();
+        type_info::account_address(&witness_type_info)
     }
 
     fun assert_identity_is_valid(
