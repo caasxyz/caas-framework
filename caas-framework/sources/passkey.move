@@ -9,8 +9,7 @@ module caas_framework::passkey {
     use aptos_framework::object::{Self, ExtendRef};
     use caas_framework::namespace::{Self, NamespaceCore};
     use caas_framework::label;
-
-    struct Witness has drop {}
+    use caas_framework::witness::{Witness};
 
     struct PasskeyManagement has key {
         extend_ref: ExtendRef
@@ -168,6 +167,7 @@ module caas_framework::passkey {
         let user_address = signer::address_of(user);
         let passkey_signer_address = signer::address_of(passkey_signer);
         let _project_signer_address = signer::address_of(project_signer);
+        assert_project_signer<T>(project_signer);
         let passkey_object_address = get_user_passkey_object_address(user_address);
         assert!(object::object_exists<UserPasskey<T>>(passkey_object_address), EPASSKEY_NOT_INITIALIZED);
         let user_passkeys = borrow_global_mut<UserPasskey<T>>(passkey_object_address);
@@ -287,14 +287,14 @@ module caas_framework::passkey {
             public_key.push_back(bytes);
             i += 1;
         };
-        public_key.reverse();
+        // public_key.reverse();
         public_key
     }
 
     fun hex_to_bytes(hex_string: String): u8 {
         let first_hex = hex_string.sub_string(0, 1);
         let first_hex_to_u8 = hex_to_u8(first_hex); 
-        let first_hex_to_u8 = first_hex_to_u8 * 0xf;
+        let first_hex_to_u8 = first_hex_to_u8 << 4;
         let second_hex = hex_string.sub_string(1, 2);
         let second_hex_to_u8 = hex_to_u8(second_hex); 
         first_hex_to_u8 + second_hex_to_u8
