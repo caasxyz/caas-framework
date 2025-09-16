@@ -8,7 +8,7 @@ module caas_framework::namespace {
     use aptos_framework::event;
     use aptos_std::type_info;
     use aptos_std::smart_table::{Self, SmartTable};
-    use caas_framework::identity::{verify_identity};
+    use caas_framework::identity::{verify_identity, get_project_address_by_type};
     use caas_framework::authorization::{verify_read_authorization};
     use aptos_framework::object::{Self, Object, ExtendRef, TransferRef};
 
@@ -91,6 +91,8 @@ module caas_framework::namespace {
         namespace: address
     }
 
+    struct Witness has drop {}
+
     #[event]
     struct NamespaceCreatedEvent has drop, copy, store {
         project_address: address,
@@ -117,12 +119,19 @@ module caas_framework::namespace {
         namespace: Object<NamespaceCore>
     }
 
+    #[event]
+    struct DataFetchedByType<phantom DataType> has drop, copy, store {
+        project_address: address,
+        namespace: Object<NamespaceCore>
+    }
+
     const EWITNESS_VERIFIED_FAILED: u64 = 1;
     const ENO_PERMISSION_TO_ACCESS_NAMESPACE: u64 = 2;
     const ENAMESPACE_PROJECT_NOT_MATCH: u64 = 3;
     const ENAMESPACE_NOT_EXISTS: u64 = 4;
     const EWITNESS_PROJECT_NOT_MATCH: u64 = 5;
     const ENAMESPACE_TOO_DEEP: u64 = 6;
+    const EPROJECT_NO_NAMESPACE_REGITERED: u64 = 7;
 
     const MAX_NAMESPACE_DEPTH: u64 = 2;
 
@@ -138,13 +147,14 @@ module caas_framework::namespace {
             total_namespaces: 0,
             total_root_spaces: 0,
             total_sub_spaces: 0
-        })
+        });
+
     }
 
     public fun create_namespace<T: drop>(
         witness: T, 
         parent_space: Option<Object<NamespaceCore>>
-    ): Object<NamespaceCore> acquires NamespaceCore {
+    ): Object<NamespaceCore> acquires NamespaceCore, NamespaceRegistry {
         let project_address = verify_witness_return_project_address(witness);
         let construct_ref = object::create_object(project_address);
         let obj_signer = object::generate_signer(&construct_ref);
@@ -192,6 +202,19 @@ module caas_framework::namespace {
 
         let namespace_obj = object::address_to_object<NamespaceCore>(signer::address_of(&obj_signer));
 
+        let namespace_registry = borrow_global_mut<NamespaceRegistry>(@caas_framework);
+        if(!namespace_registry.project_to_namespaces.contains(project_address)) {
+            namespace_registry.project_to_namespaces.add(project_address, vector::empty<address>());
+        };
+        let project_namespaces = namespace_registry.project_to_namespaces.borrow_mut(project_address);
+        project_namespaces.push_back(object::object_address(&namespace_obj));
+        namespace_registry.total_namespaces += 1;
+        if(parent.is_some()) {
+            namespace_registry.total_root_spaces += 1;
+        } else {
+            namespace_registry.total_sub_spaces += 1;
+        };
+
         event::emit(NamespaceCreatedEvent{
             project_address,
             namespace: namespace_obj,
@@ -237,6 +260,29 @@ module caas_framework::namespace {
         move_to(&obj_signer, container);
 
         event::emit(DataFetchedByWitness<DataType>{
+            project_address,
+            namespace
+        });
+
+        (data, Voucher<DataType>{
+            namespace: obj_address
+        })
+    }
+
+    public(package) fun get_data_by_type_internal<T: drop, DataType: store>(
+        namespace: Object<NamespaceCore>, 
+    ): (DataType, Voucher<DataType>) acquires NamespaceCore, Container {
+        let project_address = get_project_address_by_type<T>();
+        let namespace_project_address = get_project_address_by_namespace(namespace);
+        assert!(project_address == namespace_project_address, EWITNESS_PROJECT_NOT_MATCH);
+        let obj_address = object::object_address(&namespace);
+        let core_data = borrow_global_mut<NamespaceCore>(obj_address);
+        let obj_signer = object::generate_signer_for_extending(&core_data.extend_ref);
+        let container = move_from<Container<DataType>>(obj_address);
+        let data = container.data.extract();
+        move_to(&obj_signer, container);
+
+        event::emit(DataFetchedByType<DataType>{
             project_address,
             namespace
         });
@@ -315,6 +361,13 @@ module caas_framework::namespace {
         namespace_core.project_info
     }
 
+    public(package) fun has_data_container_internal<T: drop, DataType: store>(
+        namespace: Object<NamespaceCore>, 
+    ): bool {
+        let obj_address = object::object_address(&namespace);
+        exists<Container<DataType>>(obj_address)
+    }
+
     public fun has_data_container<T: drop, DataType: store>(
         namespace: Object<NamespaceCore>, 
         witness: T
@@ -328,6 +381,15 @@ module caas_framework::namespace {
             assert!(pass, ENO_PERMISSION_TO_ACCESS_NAMESPACE);
         };
         exists<Container<DataType>>(obj_address)
+    }
+
+    #[view]
+    public fun get_primary_namespace_address<T: drop>(): address acquires NamespaceRegistry {
+        let namespace_registry = borrow_global<NamespaceRegistry>(@caas_framework);
+        let project_address = get_project_address_by_type<T>();
+        assert!(namespace_registry.project_to_namespaces.contains(project_address), EPROJECT_NO_NAMESPACE_REGITERED);
+        let namespace_lists = namespace_registry.project_to_namespaces.borrow(project_address);
+        *namespace_lists.borrow(0)
     }
     
 }

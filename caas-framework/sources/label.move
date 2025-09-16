@@ -92,6 +92,23 @@ module caas_framework::label {
         });
     }
 
+    public(package) fun set_label_internal<T: drop>(namespace: Object<NamespaceCore>, address_to_label: address, label: String) {
+        let (label_record, voucher) = namespace::get_data_by_type_internal<T, Label>(namespace);
+        assert!(label_record.enums.contains(&label), EENUM_NOT_EXISTS);
+
+        if(!label_record.labels.contains(address_to_label)) {
+            label_record.labels.add(address_to_label, smart_vector::new<String>());
+        };
+        let address_labels = label_record.labels.borrow_mut(address_to_label);
+        assert!(!address_labels.contains(&label), EADDRESS_ALREADY_LABELED);
+        address_labels.push_back(label);
+        namespace::return_data(label_record, voucher);
+        event::emit(SetLabelEvent{
+            key: address_to_label,
+            label
+        });
+    }
+
     public fun remove_label<T: drop>(namespace: Object<NamespaceCore>, address_to_remove_label: address, label: String, witness: T) {
         let (label_record, voucher) = namespace::get_data_by_witness<T, Label>(namespace, witness);
         assert!(label_record.enums.contains(&label), EENUM_NOT_EXISTS);
@@ -114,6 +131,10 @@ module caas_framework::label {
 
     fun get_labels_by_project<T: drop>(namespace: Object<NamespaceCore>, project: address, witness: T): (Label, Voucher<Label>) {
         namespace::get_data_by_project<T, Label>(namespace, project, witness)
+    }
+
+    fun get_labels_by_type<T: drop>(namespace: Object<NamespaceCore>): (Label, Voucher<Label>) {
+        namespace::get_data_by_type_internal<T, Label>(namespace)
     }
 
     public fun has_label<T: drop>(
@@ -141,6 +162,23 @@ module caas_framework::label {
         whether_have_label
     }
 
+    public(package) fun has_label_internal<T: drop>(
+        namespace: Object<NamespaceCore>, 
+        address_to_check: address, 
+        label: String, 
+    ): bool {
+        let (label_record, voucher) = get_labels_by_type<T>(namespace);
+        assert!(label_record.enums.contains(&label), EENUM_NOT_EXISTS);
+        let whether_have_label = if(label_record.labels.contains(address_to_check)) {
+            let address_labels = label_record.labels.borrow(address_to_check);
+            address_labels.contains(&label)
+        } else {
+            false
+        };
+        namespace::return_data(label_record, voucher);
+        whether_have_label
+    }
+
     public fun has_label_enum<T: drop>(
         namespace: Object<NamespaceCore>,
         label: String,
@@ -154,6 +192,16 @@ module caas_framework::label {
         } else {
             get_labels_by_project(namespace, type_info_address, witness)
         };
+        let whether_have_label_enum = label_record.enums.contains(&label);
+        namespace::return_data(label_record, voucher);
+        whether_have_label_enum
+    }
+
+    public(package) fun has_label_enum_internal<T: drop>(
+        namespace: Object<NamespaceCore>,
+        label: String
+    ): bool {
+        let (label_record, voucher) = get_labels_by_type<T>(namespace);
         let whether_have_label_enum = label_record.enums.contains(&label);
         namespace::return_data(label_record, voucher);
         whether_have_label_enum
@@ -187,6 +235,12 @@ module caas_framework::label {
         witness: T
     ): bool {
         namespace::has_data_container<T, Label>(namespace, witness)
+    }
+
+    public(package) fun does_label_initialized_internal<T: drop>(
+        namespace: Object<NamespaceCore>,
+    ): bool {
+        namespace::has_data_container_internal<T, Label>(namespace)
     }
 
 }
