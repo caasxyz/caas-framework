@@ -80,7 +80,8 @@ module caas_framework::passkey {
     const ENOT_FIRST_INITIALIZE: u64 = 13;
     const EPROJECT_MUST_INITIALIZE_NAMESPACE_FIRST: u64 = 14;
 
-    const PASSKEY_LABEL: vector<u8> = b"PASSKEY_VERIFY_SIGNER";
+    const PASSKEY_VERIFY_LABEL: vector<u8> = b"PASSKEY_VERIFY_SIGNER";
+    const PASSKEY_USER_LABEL: vector<u8> = b"PASSKEY_USER";
     const SEED: vector<u8> = b"CAAS-PASSKEY-TEST";
     const EXTRA_DATA_MAX_LENGTH: u64 = 500;
 
@@ -256,13 +257,13 @@ module caas_framework::passkey {
         let primary_namespace = object::address_to_object<NamespaceCore>(primary_namespace_address);
         assert!(label::does_label_initialized_internal<T>(primary_namespace), EPROJECT_MUST_INITIALIZE_NAMESPACE_FIRST);
         if(
-            label::has_label_enum_internal<T>(primary_namespace, string::utf8(PASSKEY_LABEL))
+            label::has_label_enum_internal<T>(primary_namespace, string::utf8(PASSKEY_VERIFY_LABEL))
         ) {
             assert!(
                 label::has_label_internal<T>(
                     primary_namespace, 
                     project_signer_address, 
-                    string::utf8(PASSKEY_LABEL)
+                    string::utf8(PASSKEY_VERIFY_LABEL)
                 ),
                 EPROJECT_SIGNER_NOT_APPROVED
             );
@@ -273,7 +274,7 @@ module caas_framework::passkey {
                 label::has_label_internal<Witness>(
                     caas_framework_namespace,
                     project_signer_address,
-                    string::utf8(PASSKEY_LABEL)
+                    string::utf8(PASSKEY_VERIFY_LABEL)
                 ),
                 EPROJECT_SIGNER_NOT_APPROVED
             )
@@ -283,13 +284,16 @@ module caas_framework::passkey {
     fun label_user_passkey<T: drop>(user_passkey_address: address) {
         let primary_namespace_address = namespace::get_primary_namespace_address<T>();
         let primary_namespace = object::address_to_object<NamespaceCore>(primary_namespace_address);
-        label::set_label_internal<T>(primary_namespace, user_passkey_address, string::utf8(PASSKEY_LABEL));
+        if(!label::has_label_enum_internal<T>(primary_namespace, string::utf8(PASSKEY_USER_LABEL))) {
+            label::add_enums_internal<T>(primary_namespace, string::utf8(PASSKEY_USER_LABEL));
+        };
+        label::set_label_internal<T>(primary_namespace, user_passkey_address, string::utf8(PASSKEY_USER_LABEL));
     }
 
     fun remove_user_passkey_label<T: drop>(user_passkey_address: address) {
         let primary_namespace_address = namespace::get_primary_namespace_address<T>();
         let primary_namespace = object::address_to_object<NamespaceCore>(primary_namespace_address);
-        label::remove_label_internal<T>(primary_namespace, user_passkey_address, string::utf8(PASSKEY_LABEL));
+        label::remove_label_internal<T>(primary_namespace, user_passkey_address, string::utf8(PASSKEY_USER_LABEL));
 
     }
 

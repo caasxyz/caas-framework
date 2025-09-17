@@ -75,6 +75,20 @@ module caas_framework::label {
         })
     }
 
+    public(package) fun add_enums_internal<T: drop>(namespace: Object<NamespaceCore>, new_enum: String) {
+        let witness_type_info = type_info::type_of<T>();
+        let type_info_address = type_info::account_address(&witness_type_info);
+        let (label_record, voucher) = namespace::get_data_by_type_internal<T, Label>(namespace);
+        assert!(!label_record.enums.contains(&new_enum), ELABEL_ENUM_ALREADY_CONTAINS);
+        label_record.enums.push_back(new_enum);
+        namespace::return_data(label_record, voucher);
+        event::emit(AddLabelEnumEvent{
+            project_address: type_info_address,
+            namespace,
+            label: new_enum
+        })
+    }
+
     public fun set_label<T: drop>(namespace: Object<NamespaceCore>, address_to_label: address, label: String, witness: T) {
         let (label_record, voucher) = namespace::get_data_by_witness<T, Label>(namespace, witness);
         assert!(label_record.enums.contains(&label), EENUM_NOT_EXISTS);
