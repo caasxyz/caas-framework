@@ -1,9 +1,8 @@
 module caas_framework::passkey {
 
     use std::vector;
-    use std::string;
     use std::signer;
-    use std::string::{String};
+    use std::string::{Self, String};
     use aptos_framework::event;
     use aptos_std::smart_table::{Self, SmartTable};
     use aptos_framework::object::{Self, ExtendRef};
@@ -54,6 +53,14 @@ module caas_framework::passkey {
         extra_data: vector<u8>
     }
 
+    #[event]
+    struct PasskeyRemovedEvent<phantom T> has store, copy, drop {
+        user_address: address,
+        passkey_id: String,
+        authentication_passkey: address,
+        domain: String
+    }
+
 
     // for testing
     struct TestType has drop {}
@@ -70,9 +77,14 @@ module caas_framework::passkey {
     const EHEX_INVALID: u64 = 10;
     const EHEX_TO_U8_NEED_ONE_HEX: u64 = 11;
     const EPROJECT_SIGNER_NOT_APPROVED: u64 = 12;
+    const ENOT_FIRST_INITIALIZE: u64 = 13;
+    const EPROJECT_MUST_INITIALIZE_NAMESPACE_FIRST: u64 = 14;
 
+    const PASSKEY_VERIFY_LABEL: vector<u8> = b"PASSKEY_VERIFY_SIGNER";
+    const PASSKEY_USER_LABEL: vector<u8> = b"PASSKEY_USER";
     const SEED: vector<u8> = b"CAAS-PASSKEY-TEST";
     const EXTRA_DATA_MAX_LENGTH: u64 = 500;
+
 
     //TODO: label passkey account when added
     public entry fun initialize<T: drop>(
@@ -106,6 +118,7 @@ module caas_framework::passkey {
             });
         };
         let user_passkeys = borrow_global_mut<UserPasskey<T>>(passkey_object_address);
+        assert!(user_passkeys.infos.keys().length() == 0, ENOT_FIRST_INITIALIZE);
         assert!(!user_passkeys.infos.contains(passkey_address), EALREADY_REGISTERED);
         user_passkeys.infos.add(passkey_address, PasskeyInfo{
             domain,
@@ -113,6 +126,7 @@ module caas_framework::passkey {
             passkey_id,
             extra_data
         });
+        label_user_passkey<T>(passkey_address);
         event::emit(PasskeyInitializedEvent<T>{
             user_address,
             project_signer_address,
@@ -148,6 +162,7 @@ module caas_framework::passkey {
             passkey_id,
             extra_data
         });
+        label_user_passkey<T>(passkey_signer_address);
         event::emit(PasskeyRegisteredEvent<T>{
             user_address,
             project_signer_address,
@@ -173,8 +188,14 @@ module caas_framework::passkey {
         let user_passkeys = borrow_global_mut<UserPasskey<T>>(passkey_object_address);
         assert!(user_passkeys.infos.contains(passkey_signer_address), EPASSKEY_NOT_VALID);
         assert!(user_passkeys.infos.contains(to_remove), EPASSKEY_NOT_FOUND);
-        user_passkeys.infos.remove(to_remove);
-        // TODO: emit event
+        let passkey_info = user_passkeys.infos.remove(to_remove);
+        remove_user_passkey_label<T>(to_remove);
+        event::emit(PasskeyRemovedEvent<T>{
+            user_address,
+            passkey_id: passkey_info.passkey_id,
+            domain: passkey_info.domain,
+            authentication_passkey: passkey_signer_address
+        });
     }
 
     #[view]
@@ -234,15 +255,15 @@ module caas_framework::passkey {
         let project_signer_address = signer::address_of(project_signer);
         let primary_namespace_address = namespace::get_primary_namespace_address<T>();
         let primary_namespace = object::address_to_object<NamespaceCore>(primary_namespace_address);
+        assert!(label::does_label_initialized_internal<T>(primary_namespace), EPROJECT_MUST_INITIALIZE_NAMESPACE_FIRST);
         if(
-            label::does_label_initialized_internal<T>(primary_namespace) && 
-            label::has_label_enum_internal<T>(primary_namespace, string::utf8(b"PASSKEY_VERIFY_SIGNER"))
+            label::has_label_enum_internal<T>(primary_namespace, string::utf8(PASSKEY_VERIFY_LABEL))
         ) {
             assert!(
                 label::has_label_internal<T>(
                     primary_namespace, 
                     project_signer_address, 
-                    string::utf8(b"PASSKEY_VERIFY_SIGNER")
+                    string::utf8(PASSKEY_VERIFY_LABEL)
                 ),
                 EPROJECT_SIGNER_NOT_APPROVED
             );
@@ -253,11 +274,27 @@ module caas_framework::passkey {
                 label::has_label_internal<Witness>(
                     caas_framework_namespace,
                     project_signer_address,
-                    string::utf8(b"PASSKEY_VERIFY_SIGNER")
+                    string::utf8(PASSKEY_VERIFY_LABEL)
                 ),
                 EPROJECT_SIGNER_NOT_APPROVED
             )
         };
+    }
+
+    fun label_user_passkey<T: drop>(user_passkey_address: address) {
+        let primary_namespace_address = namespace::get_primary_namespace_address<T>();
+        let primary_namespace = object::address_to_object<NamespaceCore>(primary_namespace_address);
+        if(!label::has_label_enum_internal<T>(primary_namespace, string::utf8(PASSKEY_USER_LABEL))) {
+            label::add_enums_internal<T>(primary_namespace, string::utf8(PASSKEY_USER_LABEL));
+        };
+        label::set_label_internal<T>(primary_namespace, user_passkey_address, string::utf8(PASSKEY_USER_LABEL));
+    }
+
+    fun remove_user_passkey_label<T: drop>(user_passkey_address: address) {
+        let primary_namespace_address = namespace::get_primary_namespace_address<T>();
+        let primary_namespace = object::address_to_object<NamespaceCore>(primary_namespace_address);
+        label::remove_label_internal<T>(primary_namespace, user_passkey_address, string::utf8(PASSKEY_USER_LABEL));
+
     }
 
     // return user's passkey object address by calculating with a fixed seed phrase.

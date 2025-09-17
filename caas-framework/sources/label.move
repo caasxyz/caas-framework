@@ -75,6 +75,20 @@ module caas_framework::label {
         })
     }
 
+    public(package) fun add_enums_internal<T: drop>(namespace: Object<NamespaceCore>, new_enum: String) {
+        let witness_type_info = type_info::type_of<T>();
+        let type_info_address = type_info::account_address(&witness_type_info);
+        let (label_record, voucher) = namespace::get_data_by_type_internal<T, Label>(namespace);
+        assert!(!label_record.enums.contains(&new_enum), ELABEL_ENUM_ALREADY_CONTAINS);
+        label_record.enums.push_back(new_enum);
+        namespace::return_data(label_record, voucher);
+        event::emit(AddLabelEnumEvent{
+            project_address: type_info_address,
+            namespace,
+            label: new_enum
+        })
+    }
+
     public fun set_label<T: drop>(namespace: Object<NamespaceCore>, address_to_label: address, label: String, witness: T) {
         let (label_record, voucher) = namespace::get_data_by_witness<T, Label>(namespace, witness);
         assert!(label_record.enums.contains(&label), EENUM_NOT_EXISTS);
@@ -111,6 +125,22 @@ module caas_framework::label {
 
     public fun remove_label<T: drop>(namespace: Object<NamespaceCore>, address_to_remove_label: address, label: String, witness: T) {
         let (label_record, voucher) = namespace::get_data_by_witness<T, Label>(namespace, witness);
+        assert!(label_record.enums.contains(&label), EENUM_NOT_EXISTS);
+
+        assert!(label_record.labels.contains(address_to_remove_label), EADDRESS_NEVER_BEEN_LABELED);
+        let address_labels = label_record.labels.borrow_mut(address_to_remove_label);
+        assert!(address_labels.contains(&label), EADDRESS_NOT_LABELED);
+        let (_found, index) = address_labels.index_of(&label); 
+        address_labels.remove(index);
+        namespace::return_data(label_record, voucher);
+        event::emit(RemoveLabelEvent{
+            key: address_to_remove_label,
+            label
+        });
+    }
+
+    public(package) fun remove_label_internal<T: drop>(namespace: Object<NamespaceCore>, address_to_remove_label: address, label: String) {
+        let (label_record, voucher) = namespace::get_data_by_type_internal<T, Label>(namespace);
         assert!(label_record.enums.contains(&label), EENUM_NOT_EXISTS);
 
         assert!(label_record.labels.contains(address_to_remove_label), EADDRESS_NEVER_BEEN_LABELED);
