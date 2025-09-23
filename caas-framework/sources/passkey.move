@@ -237,13 +237,17 @@ module caas_framework::passkey {
 
     }
 
-    // for testing
-    public entry fun passkey_verify<T: drop>(user: &signer, passkey: &signer) acquires UserPasskey {
+    public entry fun passkey_verify<T: drop>(
+        user: &signer, 
+        passkey: &signer, 
+        project_signer: &signer
+    ) acquires UserPasskey {
         let user_address = signer::address_of(user);
         let passkey_object_address = get_user_passkey_object_address(user_address);
         let passkey_address = signer::address_of(passkey);
         let user_passkeys = borrow_global<UserPasskey<T>>(passkey_object_address);
         assert!(user_passkeys.infos.contains(passkey_address), EPASSKEY_NOT_CONTAINED);
+        assert_project_signer<T>(project_signer);
         let _passkey_info = user_passkeys.infos.borrow(passkey_address);
         event::emit(VerifyPassedEvent{});
     }
