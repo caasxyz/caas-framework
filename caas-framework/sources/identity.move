@@ -12,7 +12,7 @@ module caas_framework::identity {
         // TypeInfo -> IdentityInfo
         registered_identities: SmartTable<TypeInfo, IdentityInfo>,
         // API key -> IdentityInfo
-        registered_api_keys: SmartTable<String, TypeInfo>,
+        registered_identity_string: SmartTable<String, TypeInfo>,
         // Project address -> TypeInfo list
         project_types: SmartTable<address, vector<TypeInfo>>
     }
@@ -24,24 +24,24 @@ module caas_framework::identity {
         struct_name: String,
         registered_at: u64,
         is_active: bool,
-        api_key: String,
+        identity: String,
     }
 
     #[event]
     struct WitnessDropEvent<phantom T> has copy, drop, store {
-        api_key: String
+        identity: String
     }
 
     #[event]
     struct IdentityRegisteredEvent<phantom T> has copy, store, drop {
         project_address: address,
-        api_key: String
+        identity: String
     }
 
     #[event]
     struct IdentityStatusToggledEvent<phantom T> has copy, store, drop {
         project_address: address,
-        api_key: String,
+        identity: String,
         status_before_toggled: bool,
         status_after_toggled: bool
     }
@@ -51,17 +51,16 @@ module caas_framework::identity {
     const E_NOT_REGISTERED: u64 = 2;
     const E_REGISTERED: u64 = 3;
     const E_IDENTITY_DISABLED: u64 = 4;
-    const E_INVALID_API_KEY: u64 = 5;
-    const EPROJECT_ADDRESS_NOT_MATCH: u64 = 6;
-    const EMODULE_NAME_NOT_MATCH: u64 = 7;
-    const ESTRUCT_NAME_NOT_MATCH: u64 = 8;
+    const EPROJECT_ADDRESS_NOT_MATCH: u64 = 5;
+    const EMODULE_NAME_NOT_MATCH: u64 = 6;
+    const ESTRUCT_NAME_NOT_MATCH: u64 = 7;
 
     fun init_module(sender: &signer) {
         move_to(
             sender,
             IdentityRegistry {
                 registered_identities: smart_table::new<TypeInfo, IdentityInfo>(),
-                registered_api_keys: smart_table::new<String, TypeInfo>(),
+                registered_identity_string: smart_table::new<String, TypeInfo>(),
                 project_types: smart_table::new<address, vector<TypeInfo>>()
             }
         )
@@ -69,13 +68,13 @@ module caas_framework::identity {
 
     // Register project identity (admin only)
     // Note: T does not require any ability constraints, only type info is fetched
-    public entry fun register_identity<T: drop>(admin: &signer, api_key: String) acquires IdentityRegistry {
+    public entry fun register_identity<T: drop>(admin: &signer, identity: String) acquires IdentityRegistry {
         // TODO: admin account management
         assert!(signer::address_of(admin) == @caas_admin, E_NOT_ADMIN);
-        register_identity_internal<T>(api_key);
+        register_identity_internal<T>(identity);
     }
 
-    fun register_identity_internal<T: drop>(api_key: String) acquires IdentityRegistry {
+    fun register_identity_internal<T: drop>(identity: String) acquires IdentityRegistry {
 
         let type_info = type_info::type_of<T>();
         let project_addr = type_info::account_address(&type_info);
@@ -88,16 +87,16 @@ module caas_framework::identity {
             struct_name,
             registered_at: timestamp::now_seconds(),
             is_active: true,
-            api_key: api_key,
+            identity: identity,
         };
-        event::emit(IdentityRegisteredEvent<T>{api_key, project_address: identity_info.project_address});
+        event::emit(IdentityRegisteredEvent<T>{identity, project_address: identity_info.project_address});
 
         // Update registry
         let registry = borrow_global_mut<IdentityRegistry>(@caas_framework);
         assert!(!registry.registered_identities.contains(type_info), E_REGISTERED);
-        assert!(!registry.registered_api_keys.contains(api_key), E_REGISTERED);
+        assert!(!registry.registered_identity_string.contains(identity), E_REGISTERED);
         smart_table::add(&mut registry.registered_identities, type_info, identity_info);
-        smart_table::add(&mut registry.registered_api_keys, api_key, type_info);
+        smart_table::add(&mut registry.registered_identity_string, identity, type_info);
 
         // Update project type mapping
         if (!smart_table::contains(&registry.project_types, project_addr)) {
@@ -106,7 +105,7 @@ module caas_framework::identity {
         let types = smart_table::borrow_mut(&mut registry.project_types, project_addr);
         vector::push_back(types, type_info);
 
-        event::emit(WitnessDropEvent<T>{api_key});
+        event::emit(WitnessDropEvent<T>{identity});
 
     }
 
@@ -123,7 +122,7 @@ module caas_framework::identity {
         let identity_info = smart_table::borrow(&registry.registered_identities, witness_type_info);
         assert_identity_is_valid(identity_info, project_address, module_name, struct_name);
 
-        event::emit(WitnessDropEvent<T>{api_key: identity_info.api_key});
+        event::emit(WitnessDropEvent<T>{identity: identity_info.identity});
 
         // Return project address
         (true, identity_info.project_address)
@@ -143,7 +142,7 @@ module caas_framework::identity {
 
         event::emit(IdentityStatusToggledEvent<T>{
             project_address: identity_info.project_address,
-            api_key: identity_info.api_key,
+            identity: identity_info.identity,
             status_before_toggled,
             status_after_toggled: identity_info.is_active
         });
