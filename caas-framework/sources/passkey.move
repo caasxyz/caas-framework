@@ -162,7 +162,7 @@ module caas_framework::passkey {
             passkey_id,
             extra_data
         });
-        label_user_passkey<T>(passkey_signer_address);
+        label_user_passkey<T>(passkey_address);
         event::emit(PasskeyRegisteredEvent<T>{
             user_address,
             project_signer_address,
