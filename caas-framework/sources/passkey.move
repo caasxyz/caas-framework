@@ -19,50 +19,36 @@ module caas_framework::passkey {
     }
 
     struct PasskeyInfo has store, copy, drop {
-        domain: String,
-        passkey_id: String,
         public_key: vector<u8>, 
-        // TODO: data length limit
-        extra_data: vector<u8>
     }
 
     struct PasskeyInfoForView has store, copy, drop {
-        domain: String,
-        passkey_id: String,
-        public_key: vector<u8>,
-        extra_data: vector<u8>
+        passkey_address: address,
+        public_key: vector<u8>
     }
 
     #[event]
     struct PasskeyInitializedEvent<phantom T> has store, copy, drop {
         user_address: address,
         project_signer_address: address,
-        passkey_id: String,
-        public_key: String,
-        domain: String,
-        extra_data: vector<u8>
+        public_key: String
     }
 
     #[event]
     struct PasskeyRegisteredEvent<phantom T> has store, copy, drop {
         user_address: address,
         project_signer_address: address,
-        passkey_id: String,
         public_key: String,
-        domain: String,
-        extra_data: vector<u8>
     }
 
     #[event]
     struct PasskeyRemovedEvent<phantom T> has store, copy, drop {
         user_address: address,
-        passkey_id: String,
         authentication_passkey: address,
-        domain: String
     }
 
 
-    // for testing
+    //todo: for testing
     struct TestType has drop {}
 
     const EALREADY_REGISTERED: u64 = 1;
@@ -79,29 +65,26 @@ module caas_framework::passkey {
     const EPROJECT_SIGNER_NOT_APPROVED: u64 = 12;
     const ENOT_FIRST_INITIALIZE: u64 = 13;
     const EPROJECT_MUST_INITIALIZE_NAMESPACE_FIRST: u64 = 14;
+    const EPASSKEYS_EXCEED_CAPACITY: u64 = 15;
 
     const PASSKEY_VERIFY_LABEL: vector<u8> = b"PASSKEY_VERIFY_SIGNER";
     const PASSKEY_USER_LABEL: vector<u8> = b"PASSKEY_USER";
     const SEED: vector<u8> = b"CAAS-PASSKEY-TEST";
     const EXTRA_DATA_MAX_LENGTH: u64 = 500;
+    const USER_PASSKEY_MAX_LENGTH: u64 = 10;
 
 
-    //TODO: label passkey account when added
     public entry fun initialize<T: drop>(
         user: &signer, 
         project_signer: &signer,
         passkey_address: address, 
         public_key: String,
-        passkey_id: String, 
-        domain: String,
-        extra_data: vector<u8>
     ) acquires PasskeyManagement, UserPasskey {
         // TODO: check out whether project has been registered in caas
         let user_address = signer::address_of(user);
         let project_signer_address = signer::address_of(project_signer);
         assert_project_signer<T>(project_signer);
         let passkey_object_address = get_user_passkey_object_address(user_address);
-        assert_extra_data_length(&extra_data);
         if(!object::object_exists<PasskeyManagement>(passkey_object_address)) {
             let construct_ref = object::create_named_object(user, SEED);
             let object_signer = object::generate_signer(&construct_ref);
@@ -121,19 +104,13 @@ module caas_framework::passkey {
         assert!(user_passkeys.infos.keys().length() == 0, ENOT_FIRST_INITIALIZE);
         assert!(!user_passkeys.infos.contains(passkey_address), EALREADY_REGISTERED);
         user_passkeys.infos.add(passkey_address, PasskeyInfo{
-            domain,
             public_key: hex_string_to_public_key(public_key),
-            passkey_id,
-            extra_data
         });
         label_user_passkey<T>(passkey_address);
         event::emit(PasskeyInitializedEvent<T>{
             user_address,
             project_signer_address,
-            passkey_id,
-            public_key,
-            domain,
-            extra_data
+            public_key
         });
     }
 
@@ -143,33 +120,24 @@ module caas_framework::passkey {
         project_signer: &signer,
         passkey_address: address,
         public_key: String,
-        passkey_id: String,
-        domain: String,
-        extra_data: vector<u8>
     ) acquires UserPasskey {
         let user_address = signer::address_of(user);
         let passkey_signer_address = signer::address_of(passkey_signer);
         let project_signer_address = signer::address_of(project_signer);
         assert_project_signer<T>(project_signer);
         let passkey_object_address = get_user_passkey_object_address(user_address);
-        assert_extra_data_length(&extra_data);
         assert!(object::object_exists<UserPasskey<T>>(passkey_object_address), EPASSKEY_NOT_INITIALIZED);
         let user_passkeys = borrow_global_mut<UserPasskey<T>>(passkey_object_address);
+        assert!(user_passkeys.infos.length() <= USER_PASSKEY_MAX_LENGTH, EPASSKEYS_EXCEED_CAPACITY);
         assert!(user_passkeys.infos.contains(passkey_signer_address), EPASSKEY_NOT_VALID);
         user_passkeys.infos.add(passkey_address, PasskeyInfo{
-            domain,
             public_key: hex_string_to_public_key(public_key),
-            passkey_id,
-            extra_data
         });
         label_user_passkey<T>(passkey_address);
         event::emit(PasskeyRegisteredEvent<T>{
             user_address,
             project_signer_address,
-            passkey_id,
-            public_key,
-            domain,
-            extra_data
+            public_key
         });
     }
 
@@ -188,12 +156,10 @@ module caas_framework::passkey {
         let user_passkeys = borrow_global_mut<UserPasskey<T>>(passkey_object_address);
         assert!(user_passkeys.infos.contains(passkey_signer_address), EPASSKEY_NOT_VALID);
         assert!(user_passkeys.infos.contains(to_remove), EPASSKEY_NOT_FOUND);
-        let passkey_info = user_passkeys.infos.remove(to_remove);
+        let _passkey_info = user_passkeys.infos.remove(to_remove);
         remove_user_passkey_label<T>(to_remove);
         event::emit(PasskeyRemovedEvent<T>{
             user_address,
-            passkey_id: passkey_info.passkey_id,
-            domain: passkey_info.domain,
             authentication_passkey: passkey_signer_address
         });
     }
@@ -223,9 +189,7 @@ module caas_framework::passkey {
         user_passkey_address_list.for_each(|addr| {
             let passkey_info = user_passkeys.infos.borrow(addr);
             ret.push_back(PasskeyInfoForView{
-                domain: passkey_info.domain,
-                passkey_id: passkey_info.passkey_id,
-                extra_data: passkey_info.extra_data,
+                passkey_address: addr,
                 public_key: passkey_info.public_key
             });
         });
@@ -305,10 +269,6 @@ module caas_framework::passkey {
     // reminder that this function will return a address whether the object is exists or not.
     fun get_user_passkey_object_address(user_address: address): address {
         object::create_object_address(&user_address, SEED)
-    }
-
-    fun assert_extra_data_length(extra_data: &vector<u8>) {
-        assert!(vector::length(extra_data) < EXTRA_DATA_MAX_LENGTH, EEXTRA_DATA_TOO_LONG);
     }
 
     fun hex_string_to_public_key(hex_string: String): vector<u8> {
