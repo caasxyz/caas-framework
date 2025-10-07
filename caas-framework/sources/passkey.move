@@ -31,19 +31,24 @@ module caas_framework::passkey {
     struct PasskeyInitializedEvent<phantom T> has store, copy, drop {
         user_address: address,
         project_signer_address: address,
-        public_key: String
+        added_passkey_address: address,
+        added_passkey_public_key: String
     }
 
     #[event]
     struct PasskeyRegisteredEvent<phantom T> has store, copy, drop {
         user_address: address,
         project_signer_address: address,
-        public_key: String,
+        added_passkey_address: address,
+        added_passkey_public_key: String,
+        authentication_passkey: address
     }
 
     #[event]
     struct PasskeyRemovedEvent<phantom T> has store, copy, drop {
         user_address: address,
+        project_signer_address: address,
+        removed_passkey_address: address,
         authentication_passkey: address,
     }
 
@@ -69,7 +74,8 @@ module caas_framework::passkey {
 
     const PASSKEY_VERIFY_LABEL: vector<u8> = b"PASSKEY_VERIFY_SIGNER";
     const PASSKEY_USER_LABEL: vector<u8> = b"PASSKEY_USER";
-    const SEED: vector<u8> = b"CAAS-PASSKEY-TEST";
+    // todo: formal seed needed 
+    const SEED: vector<u8> = b"CAAS-PASSKEY-TEST-1";
     const EXTRA_DATA_MAX_LENGTH: u64 = 500;
     const USER_PASSKEY_MAX_LENGTH: u64 = 10;
 
@@ -109,8 +115,9 @@ module caas_framework::passkey {
         label_user_passkey<T>(passkey_address);
         event::emit(PasskeyInitializedEvent<T>{
             user_address,
+            added_passkey_address: passkey_address,
             project_signer_address,
-            public_key
+            added_passkey_public_key: public_key
         });
     }
 
@@ -137,7 +144,9 @@ module caas_framework::passkey {
         event::emit(PasskeyRegisteredEvent<T>{
             user_address,
             project_signer_address,
-            public_key
+            added_passkey_address: passkey_address,
+            added_passkey_public_key: public_key,
+            authentication_passkey: passkey_signer_address
         });
     }
 
@@ -149,7 +158,7 @@ module caas_framework::passkey {
     ) acquires UserPasskey {
         let user_address = signer::address_of(user);
         let passkey_signer_address = signer::address_of(passkey_signer);
-        let _project_signer_address = signer::address_of(project_signer);
+        let project_signer_address = signer::address_of(project_signer);
         assert_project_signer<T>(project_signer);
         let passkey_object_address = get_user_passkey_object_address(user_address);
         assert!(object::object_exists<UserPasskey<T>>(passkey_object_address), EPASSKEY_NOT_INITIALIZED);
@@ -160,6 +169,8 @@ module caas_framework::passkey {
         remove_user_passkey_label<T>(to_remove);
         event::emit(PasskeyRemovedEvent<T>{
             user_address,
+            project_signer_address,
+            removed_passkey_address: to_remove,
             authentication_passkey: passkey_signer_address
         });
     }
