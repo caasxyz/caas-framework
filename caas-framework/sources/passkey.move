@@ -52,10 +52,6 @@ module caas_framework::passkey {
         authentication_passkey: address,
     }
 
-
-    //todo: for testing
-    struct TestType has drop {}
-
     const EALREADY_REGISTERED: u64 = 1;
     const ENO_PASSKEY_REGISTERED: u64 = 2;
     const EPASSKEY_NOT_CONTAINED: u64 = 3;
@@ -74,8 +70,7 @@ module caas_framework::passkey {
 
     const PASSKEY_VERIFY_LABEL: vector<u8> = b"PASSKEY_VERIFY_SIGNER";
     const PASSKEY_USER_LABEL: vector<u8> = b"PASSKEY_USER";
-    // todo: formal seed needed 
-    const SEED: vector<u8> = b"CAAS-PASSKEY-TEST-1";
+    const SEED: vector<u8> = b"CAAS-PASSKEY";
     const EXTRA_DATA_MAX_LENGTH: u64 = 500;
     const USER_PASSKEY_MAX_LENGTH: u64 = 10;
 
