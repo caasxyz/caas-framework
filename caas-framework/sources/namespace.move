@@ -210,9 +210,9 @@ module caas_framework::namespace {
         project_namespaces.push_back(object::object_address(&namespace_obj));
         namespace_registry.total_namespaces += 1;
         if(parent.is_some()) {
-            namespace_registry.total_root_spaces += 1;
-        } else {
             namespace_registry.total_sub_spaces += 1;
+        } else {
+            namespace_registry.total_root_spaces += 1;
         };
 
         event::emit(NamespaceCreatedEvent{
