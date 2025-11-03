@@ -355,16 +355,15 @@ module caas_framework::authorization {
 
         let toggle_status_before = auth_info.is_active;
         let toggle_status_after = is_active;
-
-        auth_info.is_active = is_active;
-
-        event::emit(AuthorizationToggledEvent{
-            authorizer,
-            authorized_module,
-            toggle_status_before,
-            toggle_status_after
-        });
-
+        if(toggle_status_before != toggle_status_after) {
+            auth_info.is_active = is_active;
+            event::emit(AuthorizationToggledEvent{
+                authorizer,
+                authorized_module,
+                toggle_status_before,
+                toggle_status_after
+            });
+        };
     }
 
     inline fun set_auth_info_active_status_in_authorized_list(
