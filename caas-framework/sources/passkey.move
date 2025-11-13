@@ -214,50 +214,51 @@ module caas_framework::passkey {
 
     public entry fun passkey_verify<T: drop>(
         user: &signer, 
-        passkey: &signer, 
-        project_signer: &signer
+        passkey_or_project_signer: &signer, 
+        caas_signer: &signer
     ) acquires UserPasskey {
         let user_address = signer::address_of(user);
-        let passkey_object_address = get_user_passkey_object_address(user_address);
-        let passkey_address = signer::address_of(passkey);
-        let user_passkeys = borrow_global<UserPasskey<T>>(passkey_object_address);
-        assert!(user_passkeys.infos.contains(passkey_address), EPASSKEY_NOT_CONTAINED);
-        assert_project_signer<T>(project_signer);
-        let _passkey_info = user_passkeys.infos.borrow(passkey_address);
+        if(is_user_registered<T>(user_address)) {
+            let passkey_object_address = get_user_passkey_object_address(user_address);
+            let passkey_address = signer::address_of(passkey_or_project_signer);
+            let user_passkeys = borrow_global<UserPasskey<T>>(passkey_object_address);
+            assert!(user_passkeys.infos.contains(passkey_address), EPASSKEY_NOT_CONTAINED);
+        } else {
+            assert_project_signer<T>(passkey_or_project_signer);
+        };
+        assert_caas_signer(caas_signer);
         event::emit(VerifyPassedEvent{});
     }
 
-    // Project signer need to be verified by project's label system, to be simplified, the label data must 
-    // contain the signer address as a passkey verify signer, if the project label data does not set the passkey
-    // signer address, it will fallback to use the caas framework default signer to check with.
+    // Verify the project's verification address
     fun assert_project_signer<T: drop>(project_signer: &signer) {
         let project_signer_address = signer::address_of(project_signer);
         let primary_namespace_address = namespace::get_primary_namespace_address<T>();
         let primary_namespace = object::address_to_object<NamespaceCore>(primary_namespace_address);
         assert!(label::does_label_initialized_internal<T>(primary_namespace), EPROJECT_MUST_INITIALIZE_NAMESPACE_FIRST);
-        if(
-            label::has_label_enum_internal<T>(primary_namespace, string::utf8(PASSKEY_VERIFY_LABEL))
-        ) {
-            assert!(
-                label::has_label_internal<T>(
-                    primary_namespace, 
-                    project_signer_address, 
-                    string::utf8(PASSKEY_VERIFY_LABEL)
-                ),
-                EPROJECT_SIGNER_NOT_APPROVED
-            );
-        } else {
-            let caas_framework_namespace_address = namespace::get_primary_namespace_address<Witness>();
-            let caas_framework_namespace = object::address_to_object<NamespaceCore>(caas_framework_namespace_address);
-            assert!(
-                label::has_label_internal<Witness>(
-                    caas_framework_namespace,
-                    project_signer_address,
-                    string::utf8(PASSKEY_VERIFY_LABEL)
-                ),
-                EPROJECT_SIGNER_NOT_APPROVED
-            )
-        };
+        assert!(
+            label::has_label_internal<T>(
+                primary_namespace, 
+                project_signer_address, 
+                string::utf8(PASSKEY_VERIFY_LABEL)
+            ),
+            EPROJECT_SIGNER_NOT_APPROVED
+        );
+    }
+
+    // Verify the caas verification address
+    fun assert_caas_signer(caas_signer: &signer) {
+        let caas_signer_address = signer::address_of(caas_signer);
+        let caas_framework_namespace_address = namespace::get_primary_namespace_address<Witness>();
+        let caas_framework_namespace = object::address_to_object<NamespaceCore>(caas_framework_namespace_address);
+        assert!(
+            label::has_label_internal<Witness>(
+                caas_framework_namespace,
+                caas_signer_address,
+                string::utf8(PASSKEY_VERIFY_LABEL)
+            ),
+            EPROJECT_SIGNER_NOT_APPROVED
+        )
     }
 
     fun label_user_passkey<T: drop>(user_passkey_address: address) {
