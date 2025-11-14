@@ -82,14 +82,14 @@ module caas_framework::passkey {
 
     public entry fun initialize<T: drop>(
         user: &signer, 
-        project_signer: &signer,
+        caas_signer: &signer,
         passkey_address: address, 
         public_key: String,
     ) acquires PasskeyManagement, UserPasskey {
         // TODO: check out whether project has been registered in caas
         let user_address = signer::address_of(user);
-        let project_signer_address = signer::address_of(project_signer);
-        assert_project_signer<T>(project_signer);
+        let caas_signer_address = signer::address_of(caas_signer);
+        assert_caas_signer(caas_signer);
         let passkey_object_address = get_user_passkey_object_address(user_address);
         if(!object::object_exists<PasskeyManagement>(passkey_object_address)) {
             let construct_ref = object::create_named_object(user, SEED);
@@ -116,7 +116,7 @@ module caas_framework::passkey {
         event::emit(PasskeyInitializedEvent<T>{
             user_address,
             added_passkey_address: passkey_address,
-            project_signer_address,
+            project_signer_address: caas_signer_address,
             added_passkey_public_key: public_key
         });
     }
@@ -124,14 +124,14 @@ module caas_framework::passkey {
     public entry fun register_when_exists<T: drop>(
         user: &signer, 
         passkey_signer: &signer, 
-        project_signer: &signer,
+        caas_signer: &signer,
         passkey_address: address,
         public_key: String,
     ) acquires UserPasskey {
         let user_address = signer::address_of(user);
         let passkey_signer_address = signer::address_of(passkey_signer);
-        let project_signer_address = signer::address_of(project_signer);
-        assert_project_signer<T>(project_signer);
+        let caas_signer_address = signer::address_of(caas_signer);
+        assert_caas_signer(caas_signer);
         let passkey_object_address = get_user_passkey_object_address(user_address);
         assert!(object::object_exists<UserPasskey<T>>(passkey_object_address), EPASSKEY_NOT_INITIALIZED);
         let user_passkeys = borrow_global_mut<UserPasskey<T>>(passkey_object_address);
@@ -143,7 +143,7 @@ module caas_framework::passkey {
         label_user_passkey<T>(passkey_address);
         event::emit(PasskeyRegisteredEvent<T>{
             user_address,
-            project_signer_address,
+            project_signer_address: caas_signer_address,
             added_passkey_address: passkey_address,
             added_passkey_public_key: public_key,
             authentication_passkey: passkey_signer_address
@@ -153,13 +153,13 @@ module caas_framework::passkey {
     public entry fun remove_passkey<T: drop>(
         user: &signer, 
         passkey_signer: &signer, 
-        project_signer: &signer,
+        caas_signer: &signer,
         to_remove: address
     ) acquires UserPasskey {
         let user_address = signer::address_of(user);
         let passkey_signer_address = signer::address_of(passkey_signer);
-        let project_signer_address = signer::address_of(project_signer);
-        assert_project_signer<T>(project_signer);
+        let caas_signer_address = signer::address_of(caas_signer);
+        assert_caas_signer(caas_signer);
         let passkey_object_address = get_user_passkey_object_address(user_address);
         assert!(object::object_exists<UserPasskey<T>>(passkey_object_address), EPASSKEY_NOT_INITIALIZED);
         let user_passkeys = borrow_global_mut<UserPasskey<T>>(passkey_object_address);
@@ -169,7 +169,7 @@ module caas_framework::passkey {
         remove_user_passkey_label<T>(to_remove);
         event::emit(PasskeyRemovedEvent<T>{
             user_address,
-            project_signer_address,
+            project_signer_address: caas_signer_address,
             removed_passkey_address: to_remove,
             authentication_passkey: passkey_signer_address
         });
