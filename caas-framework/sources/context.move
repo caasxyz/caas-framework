@@ -107,7 +107,6 @@ module caas_framework::context {
         data_value
     }
 
-    // TODO: compile with --language-version 2.2
     #[module_lock]
     public fun get_data_value_with_deserializer<T: drop, DataType>(
         namespace: Object<NamespaceCore>,

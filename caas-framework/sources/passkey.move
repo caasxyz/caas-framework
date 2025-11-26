@@ -99,8 +99,7 @@ module caas_framework::passkey {
 
     const PASSKEY_VERIFY_LABEL: vector<u8> = b"PASSKEY_VERIFY_SIGNER";
     const PASSKEY_USER_LABEL: vector<u8> = b"PASSKEY_USER";
-    // todo: formal seed needed 
-    const SEED: vector<u8> = b"CAAS-PASSKEY-TEST-1";
+    const SEED: vector<u8> = b"CAAS-PASSKEY";
     const EXTRA_DATA_MAX_LENGTH: u64 = 500;
     const USER_PASSKEY_MAX_LENGTH: u64 = 10;
 
