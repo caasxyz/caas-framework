@@ -77,6 +77,12 @@ module caas_framework::passkey {
         authentication_passkey: address,
     }
 
+    #[event]
+    struct PasskeyRemovedByAdmin<phantom T> has store, copy, drop {
+        user_address: address,
+        removed_passkeys: vector<address>
+    }
+
 
     //todo: for testing
     struct TestType has drop {}
@@ -96,6 +102,7 @@ module caas_framework::passkey {
     const ENOT_FIRST_INITIALIZE: u64 = 13;
     const EPROJECT_MUST_INITIALIZE_NAMESPACE_FIRST: u64 = 14;
     const EPASSKEYS_EXCEED_CAPACITY: u64 = 15;
+    const ENOT_ADMIN: u64 = 15;
 
     const PASSKEY_VERIFY_LABEL: vector<u8> = b"PASSKEY_VERIFY_SIGNER";
     const PASSKEY_USER_LABEL: vector<u8> = b"PASSKEY_USER";
@@ -197,6 +204,27 @@ module caas_framework::passkey {
             caas_signer_address,
             removed_passkey_address: to_remove,
             authentication_passkey: passkey_signer_address
+        });
+    }
+
+    public entry fun remove_passkey_by_admin<T: drop>(
+        admin: &signer, 
+        user_address: address 
+    ) acquires UserPasskey {
+        assert!(signer::address_of(admin) == @caas_admin, ENOT_ADMIN);
+        let passkey_object_address = get_user_passkey_object_address(user_address);
+        assert!(object::object_exists<UserPasskey<T>>(passkey_object_address), EPASSKEY_NOT_INITIALIZED);
+        let user_passkeys = borrow_global_mut<UserPasskey<T>>(passkey_object_address);
+        let removed_passkeys = user_passkeys.infos.keys();
+        // remove passkey label
+        removed_passkeys.for_each(|to_remove|{
+            remove_user_passkey_label<T>(to_remove);
+        });
+        // remove all the passkeys
+        user_passkeys.infos.clear();
+        event::emit(PasskeyRemovedByAdmin<T>{
+            user_address,
+            removed_passkeys 
         });
     }
 
